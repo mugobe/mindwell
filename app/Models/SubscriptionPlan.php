@@ -4,7 +4,6 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class SubscriptionPlan extends Model
 {
@@ -14,6 +13,7 @@ class SubscriptionPlan extends Model
         'name',
         'price',
         'billing_interval',
+        'sessions_included',
         'features',
     ];
 
@@ -21,12 +21,8 @@ class SubscriptionPlan extends Model
     {
         return [
             'price' => 'decimal:2',
+            'sessions_included' => 'integer',
             'features' => 'array',
         ];
-    }
-
-    public function subscriptions(): HasMany
-    {
-        return $this->hasMany(Subscription::class, 'plan_id');
     }
 }

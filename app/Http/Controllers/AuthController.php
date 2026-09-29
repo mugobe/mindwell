@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ClientProfile;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class AuthController extends Controller
@@ -24,14 +26,23 @@ class AuthController extends Controller
         ]);
 
         // Public sign-up only ever creates a client account. Therapist and
-        // admin accounts are created separately (therapist onboarding /
-        // an admin promoting someone), never through this open form.
-        $user = User::create([
-            'name' => $validated['name'],
-            'email' => $validated['email'],
-            'password' => $validated['password'],
-            'role' => 'client',
-        ]);
+        // admin accounts are created separately, never through this open form.
+        $user = DB::transaction(function () use ($validated) {
+            $user = User::create([
+                'name' => $validated['name'],
+                'email' => $validated['email'],
+                'password' => $validated['password'],
+                'role' => 'client',
+            ]);
+
+            // Every client gets a client_profiles row immediately — the
+            // intake assessment (and everything after it: matching,
+            // bookings, journal, reviews) hangs off this, not the user
+            // record directly.
+            ClientProfile::create(['user_id' => $user->id]);
+
+            return $user;
+        });
 
         Auth::login($user);
         $request->session()->regenerate();

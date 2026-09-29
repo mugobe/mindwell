@@ -6,20 +6,21 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
-    /**
-     * Run the migrations.
-     */
     public function up(): void
     {
         Schema::create('employer_accounts', function (Blueprint $table) {
-            $table->id();
+            $table->uuid('id')->primary();
+            $table->string('company_name');
+            $table->string('contact_name')->nullable();
+            $table->string('contact_email')->nullable();
+            $table->unsignedInteger('seats_purchased')->default(0);
+            $table->date('contract_start')->nullable();
+            $table->date('contract_renewal_date')->nullable();
+            $table->enum('status', ['active', 'inactive'])->default('active');
             $table->timestamps();
         });
     }
 
-    /**
-     * Reverse the migrations.
-     */
     public function down(): void
     {
         Schema::dropIfExists('employer_accounts');

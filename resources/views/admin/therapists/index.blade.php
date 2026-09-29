@@ -4,7 +4,10 @@
 
 <div class="dash-head">
     <h1>Therapist credentialing</h1>
-    <span class="pill warn">{{ $pending->count() }} pending review</span>
+    <div style="display:flex;gap:10px;align-items:center;">
+        <span class="pill warn">{{ $pending->count() }} pending review</span>
+        <a href="{{ route('admin.therapists.create') }}" class="btn primary sm">+ Add therapist</a>
+    </div>
 </div>
 
 <div class="section-title">Pending approval ({{ $pending->count() }})</div>
