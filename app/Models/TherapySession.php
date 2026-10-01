@@ -33,6 +33,9 @@ class TherapySession extends Model
         'plan_notes',
         'follow_up_notes',
         'therapist_live_notes',
+        'reminder_24h_sent_at',
+        'reminder_1h_sent_at',
+        'room_alert_sent_at',
         'closed_at',
         'referral_facility_id',
         'referred_at',
@@ -47,9 +50,40 @@ class TherapySession extends Model
         'other' => 'Other',
     ];
 
+    /**
+     * Notifications (added 2026-09-30): one central hook instead of edits in every
+     * controller that changes a session's status (admin approve/assign, the lobby
+     * router, …). Notifier never throws, so this can't break any of those actions.
+     */
+    protected static function booted(): void
+    {
+        static::created(function (TherapySession $session) {
+            if ($session->status === 'scheduled') {
+                app(\App\Services\Notifier::class)->sessionConfirmed($session);
+            }
+        });
+
+        static::updated(function (TherapySession $session) {
+            if (! $session->wasChanged('status')) {
+                return;
+            }
+
+            $from = $session->getRawOriginal('status');
+
+            if ($session->status === 'scheduled' && $from !== 'scheduled') {
+                app(\App\Services\Notifier::class)->sessionConfirmed($session);
+            } elseif ($session->status === 'cancelled' && $from === 'pending_approval') {
+                app(\App\Services\Notifier::class)->bookingDeclined($session);
+            }
+        });
+    }
+
     protected function casts(): array
     {
         return [
+            'reminder_24h_sent_at' => 'datetime',
+            'reminder_1h_sent_at' => 'datetime',
+            'room_alert_sent_at' => 'datetime',
             'amount_charged' => 'decimal:2',
             'scheduled_at' => 'datetime',
             'duration_minutes' => 'integer',

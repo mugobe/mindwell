@@ -21,6 +21,11 @@ class User extends Authenticatable
         'password',
         'role',
         'status',
+        // Added 2026-09-30 for reminders & notifications. phone is stored normalized
+        // as 2567XXXXXXXX — see App\Support\UgandaPhone.
+        'phone',
+        'notify_email',
+        'notify_sms',
     ];
 
     protected $hidden = [
@@ -33,6 +38,8 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'notify_email' => 'boolean',
+            'notify_sms' => 'boolean',
         ];
     }
 

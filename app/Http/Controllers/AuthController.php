@@ -23,6 +23,8 @@ class AuthController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
+            // Optional mobile number for SMS reminders (added 2026-09-30).
+            'phone' => ['nullable', 'string', 'max:20', \App\Support\UgandaPhone::rule()],
         ]);
 
         // Public sign-up only ever creates a client account. Therapist and
@@ -32,6 +34,7 @@ class AuthController extends Controller
                 'name' => $validated['name'],
                 'email' => $validated['email'],
                 'password' => $validated['password'],
+                'phone' => \App\Support\UgandaPhone::normalize($validated['phone'] ?? null),
                 'role' => 'client',
             ]);
 

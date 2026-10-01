@@ -39,6 +39,12 @@
                     <input class="mw-field" type="email" id="email" name="email" value="{{ old('email') }}" required>
                 </div>
                 <div>
+                    <label class="mw-label" for="phone">Mobile number <span style="font-weight:400;color:var(--ink-300);">(optional)</span></label>
+                    <input class="mw-field" type="tel" id="phone" name="phone" value="{{ old('phone') }}" placeholder="0772 123 456" autocomplete="tel">
+                    <div style="font-size:11px;color:var(--ink-500);margin-top:4px;">For appointment reminders by SMS. You can change this later.</div>
+                    @error('phone')<div class="mw-alert danger" style="margin-top:6px;">{{ $message }}</div>@enderror
+                </div>
+                <div>
                     <label class="mw-label" for="password">Password</label>
                     <input class="mw-field" type="password" id="password" name="password" required>
                 </div>

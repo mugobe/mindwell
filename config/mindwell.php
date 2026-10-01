@@ -28,4 +28,9 @@ return [
     // chosen by the assistant, not yet confirmed with Dr. Ntabade — easy to change here.
     'video_join_late_minutes' => 30,
 
+    // "You have a new message" emails (added 2026-09-30) wait this long first, so
+    // someone who's already in the app doesn't get emailed about a message they're
+    // about to read anyway.
+    'message_email_delay_minutes' => 10,
+
 ];

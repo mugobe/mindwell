@@ -7,6 +7,7 @@ use App\Models\JournalEntry;
 use App\Models\TherapySession;
 use App\Models\User;
 use App\Services\LiveKitToken;
+use App\Services\Notifier;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -153,6 +154,14 @@ class VideoRoomController extends Controller
         AuditLog::record($request, 'session.video_joined', "{$user->name} joined the video room ({$role}).", [
             'therapy_session_id' => $therapySession->id,
         ]);
+
+        // Added 2026-09-30: when the therapist opens the room and the client isn't in it,
+        // tell the client by email + SMS (once per session) — the in-page chime only
+        // reaches them if they already have the room page open.
+        if ($role === 'therapist' && ! $access['other_live'] && ! $therapySession->room_alert_sent_at) {
+            $therapySession->forceFill(['room_alert_sent_at' => now()])->saveQuietly();
+            app(Notifier::class)->roomReady($therapySession);
+        }
 
         return response()->json(['url' => config('livekit.url'), 'token' => $token]);
     }

@@ -40,6 +40,10 @@
         && auth()->user()->therapistProfile
         && auth()->user()->therapistProfile->credentials_verified;
 
+    // Unread messages for the "Messages" nav badge (added 2026-09-29). Never throws —
+    // returns 0 if the chat tables don't exist yet, so this can't break every page.
+    $mwUnread = \App\Models\ChatConversation::unreadTotalFor(auth()->user());
+
     // Same warm-cream + faint botanical-line-doodle background used across every
     // content canvas (admin, therapist, client) -- see the note in <head> above.
     $mwCanvasBg = "background-color:#FBF3E7; background-image:url('data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27240%27 height=%27240%27 viewBox=%270 0 240 240%27%3E%3Cg fill=%27none%27 stroke=%27%232f6f66%27 stroke-width=%271.5%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27 opacity=%270.07%27%3E%3Cg transform=%27translate(40,50) rotate(-12)%27%3E%3Cellipse cx=%270%27 cy=%27-8%27 rx=%274%27 ry=%277%27/%3E%3Cellipse cx=%270%27 cy=%278%27 rx=%274%27 ry=%277%27/%3E%3Cellipse cx=%27-8%27 cy=%270%27 rx=%277%27 ry=%274%27/%3E%3Cellipse cx=%278%27 cy=%270%27 rx=%277%27 ry=%274%27/%3E%3Ccircle cx=%270%27 cy=%270%27 r=%273%27/%3E%3C/g%3E%3Cg transform=%27translate(175,120) rotate(18)%27%3E%3Cpath d=%27M0 46 C 3 26 3 12 0 0%27/%3E%3Cpath d=%27M0 30 C 12 24 17 12 9 2%27/%3E%3Cpath d=%27M0 18 C -12 12 -16 1 -8 -6%27/%3E%3C/g%3E%3Cg transform=%27translate(55,190) rotate(8)%27%3E%3Cellipse cx=%270%27 cy=%27-7%27 rx=%273.5%27 ry=%276%27/%3E%3Cellipse cx=%270%27 cy=%277%27 rx=%273.5%27 ry=%276%27/%3E%3Cellipse cx=%27-7%27 cy=%270%27 rx=%276%27 ry=%273.5%27/%3E%3Cellipse cx=%277%27 cy=%270%27 rx=%276%27 ry=%273.5%27/%3E%3Ccircle cx=%270%27 cy=%270%27 r=%272.6%27/%3E%3C/g%3E%3C/g%3E%3C/svg%3E'); background-repeat:repeat; background-size:240px 240px;";
@@ -59,11 +63,15 @@
         <div style="display:flex;align-items:center;gap:14px;">
             @if (auth()->user()->role === 'client')
                 <a href="{{ route('sessions.history') }}" style="font-size:13px;font-weight:600;color:var(--ink-500);">My sessions</a>
+                <a href="{{ route('messages.index') }}" style="font-size:13px;font-weight:600;color:var(--ink-500);display:inline-flex;align-items:center;gap:5px;">Messages<span class="mw-unread-badge" style="{{ $mwUnread ? '' : 'display:none;' }}min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--coral-500,#e8825e);color:#fff;font-size:10.5px;font-weight:800;line-height:18px;text-align:center;">{{ $mwUnread }}</span></a>
                 <a href="{{ route('journal.index') }}" style="font-size:13px;font-weight:600;color:var(--ink-500);">My journal</a>
                 <a href="{{ route('subscription.index') }}" style="font-size:13px;font-weight:600;color:var(--ink-500);">My plan</a>
                 <a href="{{ route('employer-seat.index') }}" style="font-size:13px;font-weight:600;color:var(--ink-500);">Employer benefit</a>
             @endif
-            <span style="font-size:13px;color:var(--ink-500);">{{ auth()->user()->name }}</span>
+            <a href="{{ route('settings.notifications') }}" title="Notification settings" style="font-size:13px;color:var(--ink-500);display:inline-flex;align-items:center;gap:5px;">
+                {{ auth()->user()->name }}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;" aria-hidden="true"><path d="M6 9a6 6 0 0112 0c0 5 2 6.5 2 6.5H4S6 14 6 9z"/><path d="M10 19a2 2 0 004 0"/></svg>
+            </a>
             <form method="POST" action="{{ route('logout') }}">
                 @csrf
                 <button type="submit" class="btn ghost sm">Log out</button>
@@ -139,6 +147,10 @@
                 <a href="{{ route('therapist.sessions.index') }}" class="side-link {{ request()->routeIs('therapist.sessions.*') ? 'active' : '' }}">
                     <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 9h16"/><path d="M8 3v4M16 3v4"/><path d="M9 14l2 2 4-4"/></svg></span> Sessions
                 </a>
+                <a href="{{ route('messages.index') }}" class="side-link {{ request()->routeIs('messages.*') ? 'active' : '' }}">
+                    <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;"><path d="M4 5.5h16a1 1 0 011 1v9a1 1 0 01-1 1H10l-4.5 3.5V16.5H4a1 1 0 01-1-1v-9a1 1 0 011-1z"/></svg></span> Messages
+                    <span class="mw-unread-badge" style="{{ $mwUnread ? '' : 'display:none;' }}margin-left:auto;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:var(--coral-500,#e8825e);color:#fff;font-size:10.5px;font-weight:800;line-height:18px;text-align:center;">{{ $mwUnread }}</span>
+                </a>
                 <a href="{{ route('therapist.reports.index') }}" class="side-link {{ request()->routeIs('therapist.reports.*') ? 'active' : '' }}">
                     <span class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px;"><path d="M7 3h7l4 4v14a1 1 0 01-1 1H7a1 1 0 01-1-1V4a1 1 0 011-1z"/><path d="M14 3v4h4"/><path d="M9 13.5l2 2 4-4.5"/></svg></span> Reports
                 </a>
@@ -174,5 +186,29 @@
     </div>
 @endauth
 
+@auth
+    @if (in_array(auth()->user()->role, ['client', 'therapist'], true))
+        {{-- Keeps the "Messages" unread badge current (added 2026-09-29). Polls every
+             30s, or every 2 minutes while the tab is in the background. --}}
+        <script>
+        (function () {
+            var url = @json(route('messages.unread'));
+            function refresh() {
+                fetch(url, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
+                    .then(function (r) { return r.ok ? r.json() : null; })
+                    .then(function (d) {
+                        if (!d) return;
+                        document.querySelectorAll('.mw-unread-badge').forEach(function (b) {
+                            b.textContent = d.count; b.style.display = d.count > 0 ? '' : 'none';
+                        });
+                    })
+                    .catch(function () {})
+                    .finally(function () { setTimeout(refresh, document.hidden ? 120000 : 30000); });
+            }
+            setTimeout(refresh, 30000);
+        })();
+        </script>
+    @endif
+@endauth
 </body>
 </html>

@@ -23,6 +23,8 @@ class TherapistRegistrationController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
+            // Optional mobile number for SMS reminders (added 2026-09-30).
+            'phone' => ['nullable', 'string', 'max:20', \App\Support\UgandaPhone::rule()],
             'license_number' => ['required', 'string', 'max:255'],
             'license_state' => ['required', 'string', 'max:255'],
             'specialties' => ['nullable', 'string', 'max:500'],
@@ -41,6 +43,7 @@ class TherapistRegistrationController extends Controller
                 'name' => $validated['name'],
                 'email' => $validated['email'],
                 'password' => $validated['password'],
+                'phone' => \App\Support\UgandaPhone::normalize($validated['phone'] ?? null),
                 'role' => 'therapist',
             ]);
 

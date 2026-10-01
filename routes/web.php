@@ -17,6 +17,8 @@ use App\Http\Controllers\EmployerSeatController;
 use App\Http\Controllers\FlutterwavePaymentController;
 use App\Http\Controllers\IntakeController;
 use App\Http\Controllers\JournalController;
+use App\Http\Controllers\MessageController;
+use App\Http\Controllers\NotificationSettingsController;
 use App\Http\Controllers\SessionHistoryController;
 use App\Http\Controllers\SessionRequestController;
 use App\Http\Controllers\SubscriptionController;
@@ -55,6 +57,21 @@ Route::middleware('auth')->group(function () {
     Route::post('/sessions/{therapySession}/room/token', [VideoRoomController::class, 'token'])->name('sessions.room.token');
     Route::post('/sessions/{therapySession}/room/presence', [VideoRoomController::class, 'presence'])->name('sessions.room.presence');
     Route::post('/sessions/{therapySession}/room/notes', [VideoRoomController::class, 'notes'])->name('sessions.room.notes');
+
+    // Client ↔ therapist messaging, added 2026-09-29 — both roles, so the plain 'auth'
+    // group; MessageController checks the user is one of the two people involved.
+    // /messages/unread and /messages/with/... must stay above /messages/{conversation}.
+    // Notification settings (phone for SMS, email/SMS switches), added 2026-09-30.
+    Route::get('/settings/notifications', [NotificationSettingsController::class, 'edit'])->name('settings.notifications');
+    Route::put('/settings/notifications', [NotificationSettingsController::class, 'update'])->name('settings.notifications.update');
+    Route::post('/settings/notifications/test-sms', [NotificationSettingsController::class, 'testSms'])->middleware('throttle:3,10')->name('settings.notifications.test-sms');
+
+    Route::get('/messages', [MessageController::class, 'index'])->name('messages.index');
+    Route::get('/messages/unread', [MessageController::class, 'unread'])->name('messages.unread');
+    Route::get('/messages/with/{profileId}', [MessageController::class, 'start'])->name('messages.start');
+    Route::get('/messages/{conversation}', [MessageController::class, 'show'])->name('messages.show');
+    Route::post('/messages/{conversation}', [MessageController::class, 'send'])->middleware('throttle:30,1')->name('messages.send');
+    Route::get('/messages/{conversation}/poll', [MessageController::class, 'poll'])->name('messages.poll');
 });
 
 Route::middleware(['auth', 'role:client'])->group(function () {
