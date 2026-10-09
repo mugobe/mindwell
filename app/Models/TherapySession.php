@@ -36,10 +36,30 @@ class TherapySession extends Model
         'reminder_24h_sent_at',
         'reminder_1h_sent_at',
         'room_alert_sent_at',
+        // Session feedback & ratings (2026-10-04).
+        'client_joined_at',
+        'rating_reminder_sent_at',
+        // Richer session notes (2026-10-06).
+        'session_number',
+        'interventions_used',
+        'homework',
+        'goals_progress',
         'closed_at',
         'referral_facility_id',
         'referred_at',
         'referral_assigned_at',
+        // In-person sessions (2026-10-07).
+        'session_mode',
+        'venue_id',
+        'location_details',
+    ];
+
+    public const MODE_VIDEO = 'video';
+    public const MODE_IN_PERSON = 'in_person';
+
+    public const MODES = [
+        self::MODE_VIDEO => 'Online (video)',
+        self::MODE_IN_PERSON => 'In person',
     ];
 
     public const CLOSURE_OUTCOMES = [
@@ -84,6 +104,9 @@ class TherapySession extends Model
             'reminder_24h_sent_at' => 'datetime',
             'reminder_1h_sent_at' => 'datetime',
             'room_alert_sent_at' => 'datetime',
+            'client_joined_at' => 'datetime',
+            'rating_reminder_sent_at' => 'datetime',
+            'session_number' => 'integer',
             'amount_charged' => 'decimal:2',
             'scheduled_at' => 'datetime',
             'duration_minutes' => 'integer',
@@ -135,5 +158,70 @@ class TherapySession extends Model
     public function facility(): BelongsTo
     {
         return $this->belongsTo(Facility::class, 'referral_facility_id');
+    }
+
+    /** The client's feedback on this session (added 2026-10-04). */
+    public function rating(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(SessionRating::class);
+    }
+
+    /** The place an in-person session happens (2026-10-07). */
+    public function venue(): BelongsTo
+    {
+        return $this->belongsTo(Venue::class);
+    }
+
+    public function isInPerson(): bool
+    {
+        return $this->session_mode === self::MODE_IN_PERSON;
+    }
+
+    /** Has admin said where an in-person session happens yet? */
+    public function hasLocation(): bool
+    {
+        return $this->venue_id !== null || filled($this->location_details);
+    }
+
+    /**
+     * Where it happens, as text: "Venue, address — extra details". Null for video
+     * sessions or when admin hasn't set it yet.
+     */
+    public function locationText(): ?string
+    {
+        if (! $this->isInPerson() || ! $this->hasLocation()) {
+            return null;
+        }
+
+        return collect([$this->venue?->label(), $this->location_details])->filter()->join(' — ');
+    }
+
+    /** Price of one session of this kind, before vouchers (both are config values). */
+    public function listPrice(): float
+    {
+        return (float) ($this->isInPerson()
+            ? config('mindwell.in_person_session_price')
+            : config('mindwell.one_off_session_price'));
+    }
+
+    /** When the session was due to finish (scheduled start + duration). */
+    public function plannedEndAt(): ?\Illuminate\Support\Carbon
+    {
+        return $this->scheduled_at?->copy()->addMinutes($this->duration_minutes ?: (int) config('mindwell.session_duration_minutes', 70));
+    }
+
+    /**
+     * Can the client be asked "how was it?" — only if they actually took part: they
+     * joined the video room, or the therapist closed the session as completed.
+     */
+    public function isRateable(): bool
+    {
+        if ($this->status === 'cancelled' || ! $this->scheduled_at) {
+            return false;
+        }
+
+        // Joined the room (they may leave early, so no "has it ended?" check here) or
+        // the therapist has closed it as completed.
+        return $this->client_joined_at !== null || $this->status === 'completed';
     }
 }

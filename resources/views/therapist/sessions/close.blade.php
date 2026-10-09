@@ -2,13 +2,31 @@
 @section('title', 'Close Session')
 @section('content')
 
-<div class="dash-head">
-    <h1>Close out session with {{ $session->clientProfile?->user?->name ?? 'client' }}</h1>
-    <a href="{{ route('therapist.sessions.index') }}" class="btn ghost sm">Back to sessions</a>
+{{-- 2026-10-08 redesign (round 3): page kit head with the client's bubble. --}}
+<div class="mw-page-head">
+    <div style="display:flex;align-items:center;gap:14px;">
+        @include('partials.avatar', ['name' => $session->clientProfile?->user?->name ?? 'Client', 'size' => 46])
+        <div>
+            <h1>Close out · {{ $session->clientProfile?->user?->name ?? 'client' }}</h1>
+            <div class="sub">{{ $session->scheduled_at?->format('l, j M Y · g:i A') }} · {{ $session->isInPerson() ? 'In person' : 'Video' }}{{ $session->clientProfile?->user?->clientLabel() ? ' · '.$session->clientProfile->user->clientLabel() : '' }}</div>
+        </div>
+    </div>
+    <div class="actions">
+        {{-- Added 2026-10-03: check-in scores since intake. --}}
+        <a href="{{ route('therapist.clients.show', $session->client_profile_id) }}" class="btn ghost sm">Client file</a>
+        <a href="{{ route('therapist.clients.progress', $session->client_profile_id) }}" class="btn ghost sm">Progress</a>
+        <a href="{{ route('therapist.sessions.index') }}" class="btn ghost sm">Back to sessions</a>
+    </div>
 </div>
 
 <div class="mw-close-layout">
     <div class="card mw-assessment-card">
+        {{-- Richer intake (2026-10-09, roadmap 63): always visible, above the scores. --}}
+        @if (\App\Models\ClientIntakeDetail::tableReady())
+            <h2 style="font-size:15px;margin:0 0 10px;">What they told us</h2>
+            @include('partials.about-client', ['profileId' => $session->client_profile_id, 'compact' => true])
+            <div style="border-top:1px solid rgba(16,48,43,.08);margin:16px 0;"></div>
+        @endif
         <div style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;" onclick="mwToggleAssessment()">
             <h2 style="font-size:15px;margin:0;">Client's intake assessment</h2>
             <span id="mw-assessment-caret" style="font-size:12px;color:var(--ink-500);">Show ▾</span>
@@ -170,6 +188,15 @@
                     </p>
                 @endif
 
+                @if ($session->therapistProfile?->offers_in_person)
+                    {{-- In-person (2026-10-07): only if admin has switched it on for you. --}}
+                    <label class="mw-label" for="follow_up_mode" style="margin-top:12px;">Follow-up will be</label>
+                    <select class="mw-field" id="follow_up_mode" name="follow_up_mode" style="max-width:240px;">
+                        @foreach (\App\Models\TherapySession::MODES as $mwMode => $mwModeLabel)
+                            <option value="{{ $mwMode }}" {{ old('follow_up_mode', $session->session_mode ?: 'video') === $mwMode ? 'selected' : '' }}>{{ $mwModeLabel }}</option>
+                        @endforeach
+                    </select>
+                @endif
                 <input type="hidden" id="follow_up_at" name="follow_up_at" value="{{ $oldFollowUpAt }}">
                 <input type="hidden" id="follow_up_notes" name="follow_up_notes" value="{{ old('follow_up_notes') }}">
             </div>
@@ -198,7 +225,21 @@
                     <label class="mw-label" for="plan_notes">Plan / next steps</label>
                     <textarea class="mw-field" id="plan_notes" name="plan_notes" rows="3" placeholder="What happens next, and why this outcome was chosen." required>{{ old('plan_notes') }}</textarea>
                 </div>
+                {{-- Added 2026-10-06 (Dr. Ntabade's THERAPIST DRAFT). Optional. --}}
+                <div>
+                    <label class="mw-label" for="interventions_used">Interventions used <span style="font-weight:400;color:var(--ink-300);">(optional)</span></label>
+                    <textarea class="mw-field" id="interventions_used" name="interventions_used" rows="3" placeholder="e.g. CBT thought record, grounding, psychoeducation on sleep.">{{ old('interventions_used') }}</textarea>
+                </div>
+                <div>
+                    <label class="mw-label" for="homework">Homework / activities given <span style="font-weight:400;color:var(--ink-300);">(optional)</span></label>
+                    <textarea class="mw-field" id="homework" name="homework" rows="3" placeholder="What the client agreed to try before next time.">{{ old('homework') }}</textarea>
+                </div>
+                <div class="mw-span-2">
+                    <label class="mw-label" for="goals_progress">Progress toward goals <span style="font-weight:400;color:var(--ink-300);">(optional)</span></label>
+                    <textarea class="mw-field" id="goals_progress" name="goals_progress" rows="2" placeholder="e.g. Sleep: 5 of 7 nights in bed by 11pm. Anxiety: using breathing exercise most days.">{{ old('goals_progress') }}</textarea>
+                </div>
             </div>
+            <div style="font-size:11.5px;color:var(--ink-500);margin:-4px 0 12px;">The session number is filled in automatically when you close the session.</div>
 
             <button type="submit" class="btn primary block" style="margin-top:6px;">Close session</button>
         </form>

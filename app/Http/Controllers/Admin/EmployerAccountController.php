@@ -175,7 +175,11 @@ class EmployerAccountController extends Controller
             : "Reissued an unredeemed seat for \"{$employer->company_name}\" with a fresh code.";
         AuditLog::record($request, 'employer_seat.reissued', $description, ['employer_seat_id' => $seat->id]);
 
-        return back()->with('status', "New code generated: {$newCode}. Hand this to whoever should use the seat next.");
+        // 2026-10-06 (roadmap 26): email the new code to the employer's contact person.
+        $emailed = app(\App\Services\Notifier::class)->employerSeatReissued($employer, $newCode);
+
+        return back()->with('status', "New code generated: {$newCode}. "
+            .($emailed ? "It's been emailed to {$employer->contact_email}." : 'Hand this to whoever should use the seat next (no contact email on file to send it to).'));
     }
 
     /**

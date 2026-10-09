@@ -2,86 +2,77 @@
 @section('title', $employer->company_name)
 @section('content')
 
-<div class="dash-head">
-    <h1>{{ $employer->company_name }}</h1>
-    <div style="display:flex;gap:8px;">
+{{-- 2026-10-08 redesign: page head, KPI tiles, seat code chips, seat actions under ⋯. --}}
+<div class="mw-page-head">
+    <div style="display:flex;align-items:center;gap:14px;">
+        @include('partials.avatar', ['name' => $employer->company_name, 'size' => 46])
+        <div>
+            <h1>{{ $employer->company_name }}</h1>
+            <div class="sub">
+                <span class="mw-dot {{ $employer->status === 'active' ? 'ok' : 'bad' }}">{{ ucfirst($employer->status) }}</span>
+                @if ($employer->contract_renewal_date) · renews {{ $employer->contract_renewal_date->format('j M Y') }}@endif
+                @if ($employer->contact_name) · {{ $employer->contact_name }}@endif
+                @if ($employer->contact_email) ({{ $employer->contact_email }})@endif
+            </div>
+        </div>
+    </div>
+    <div class="actions">
+        <a href="{{ route('admin.employers.index') }}" class="btn ghost sm">All employers</a>
         @if ($employer->status === 'active')
             @php
                 // json_encode() (rather than hand-building a single-quoted JS string) so a
-                // company name containing an apostrophe or quote can't break this attribute
-                // or the confirm() call -- {{ }} HTML-escapes the JSON's own double quotes,
-                // which the browser correctly decodes back before the JS ever sees them.
+                // company name containing an apostrophe or quote can't break this attribute.
                 $mwDeactivateEmployerMsg = "Deactivate {$employer->company_name}? None of its seats will cover a session until it's reactivated.";
             @endphp
-            <form method="POST" action="{{ route('admin.employers.deactivate', $employer) }}" onsubmit="return confirm({{ json_encode($mwDeactivateEmployerMsg) }});">
+            <form method="POST" action="{{ route('admin.employers.deactivate', $employer) }}" onsubmit="return confirm({{ json_encode($mwDeactivateEmployerMsg) }});" style="display:inline;">
                 @csrf
-                <button type="submit" class="btn ghost sm" style="color:var(--danger,#c0392b);">Deactivate employer</button>
+                <button type="submit" class="btn ghost sm" style="color:#C0392B;">Deactivate employer</button>
             </form>
         @else
-            <form method="POST" action="{{ route('admin.employers.activate', $employer) }}">
+            <form method="POST" action="{{ route('admin.employers.activate', $employer) }}" style="display:inline;">
                 @csrf
                 <button type="submit" class="btn primary sm">Reactivate employer</button>
             </form>
         @endif
-        <a href="{{ route('admin.employers.index') }}" class="btn ghost sm">Back to employers</a>
     </div>
 </div>
 
-<div class="stat-row" style="margin-bottom:24px;">
-    <div class="stat-tile">
-        <div class="label">Seats purchased</div>
-        <div class="value">{{ $employer->seats_purchased }}</div>
+@if ($employer->isEndingSoon())
+    <div class="mw-alert" style="background:#FDF1EC;color:#8a4326;border:1px solid rgba(232,130,94,.35);margin-bottom:14px;">
+        The contract renews on <strong>{{ $employer->contract_renewal_date->format('j M Y') }}</strong> — contact them about renewing, then update the date.
     </div>
-    <div class="stat-tile">
-        <div class="label">Redeemed</div>
-        <div class="value">{{ $employer->activeSeatsCount() }}</div>
-    </div>
-    <div class="stat-tile">
-        <div class="label">Sessions had</div>
-        <div class="value">{{ $totalSessionsHad }}</div>
-    </div>
-    <div class="stat-tile">
-        <div class="label">Status</div>
-        <div class="value" style="font-size:16px;">
-            <span class="pill {{ $employer->status === 'active' ? 'success' : 'danger' }}">{{ ucfirst($employer->status) }}</span>
-        </div>
-    </div>
+@endif
+
+<div class="mw-kpis">
+    <div class="mw-kpi"><div class="k">Seats purchased</div><div class="v">{{ $employer->seats_purchased }}</div><div class="d">{{ $employer->seats->count() }} codes generated</div></div>
+    <div class="mw-kpi"><div class="k">Redeemed</div><div class="v">{{ $employer->activeSeatsCount() }}</div><div class="d">Staff using a seat now</div></div>
+    <div class="mw-kpi"><div class="k">Sessions had</div><div class="v">{{ $totalSessionsHad }}</div><div class="d">Covered by this employer</div></div>
 </div>
 
 <div class="card" style="padding:0;">
+    <div class="mw-card-head"><h2>Seats</h2></div>
     <table class="mw-table">
         <thead>
             <tr>
-                <th style="padding-left:16px;">Seat code</th>
+                <th style="padding-left:18px;">Seat code</th>
                 <th>Assigned to</th>
                 <th>Assigned at</th>
                 <th>Sessions had</th>
-                <th>Active</th>
-                <th style="padding-right:16px;"></th>
+                <th>Status</th>
+                <th style="padding-right:18px;text-align:right;"></th>
             </tr>
         </thead>
         <tbody>
             @forelse ($employer->seats as $seat)
             <tr>
-                <td style="padding-left:16px;font-family:monospace;font-size:12.5px;">{{ $seat->seat_code }}</td>
-                <td>{{ $seat->clientProfile?->user?->name ?? '— unredeemed —' }}</td>
-                <td>{{ $seat->assigned_at?->format('M j, Y') ?? '—' }}</td>
+                <td style="padding-left:18px;"><span class="mw-code">{{ $seat->seat_code }}</span></td>
+                <td>@if ($seat->clientProfile?->user) @include('partials.person', ['name' => $seat->clientProfile->user->name, 'size' => 28]) @else <span style="color:var(--ink-300);">— unredeemed —</span> @endif</td>
+                <td style="white-space:nowrap;">{{ $seat->assigned_at?->format('j M Y') ?? '—' }}</td>
                 <td>{{ $seat->sessions_had ?? '—' }}</td>
                 <td>
-                    <span class="pill {{ $seat->is_active ? 'success' : 'danger' }}">{{ $seat->is_active ? 'Yes' : 'No' }}</span>
+                    <span class="mw-dot {{ $seat->is_active ? 'ok' : 'bad' }}">{{ $seat->is_active ? 'Active' : 'Switched off' }}</span>
                 </td>
-                <td style="padding-right:16px;text-align:right;white-space:nowrap;">
-                    @if ($seat->is_active)
-                        <form method="POST" action="{{ route('admin.employers.seats.deactivate', [$employer, $seat]) }}" style="display:inline-block;">
-                            @csrf
-                            <button type="submit" class="btn ghost sm">Deactivate</button>
-                        </form>
-                    @else
-                        <form method="POST" action="{{ route('admin.employers.seats.activate', [$employer, $seat]) }}" style="display:inline-block;">
-                            @csrf
-                            <button type="submit" class="btn ghost sm">Reactivate</button>
-                        </form>
-                    @endif
+                <td style="padding-right:18px;text-align:right;white-space:nowrap;">
                     @php
                         // Same json_encode() safe-embedding as the "Deactivate employer" button
                         // above -- a client's name could contain an apostrophe or quote too.
@@ -89,31 +80,49 @@
                             ? 'Free up this seat for someone new? '.($seat->clientProfile?->user?->name ?? 'The current holder')."'s old code will stop working."
                             : 'Generate a fresh code for this seat? The current code will stop working.';
                     @endphp
-                    <form method="POST" action="{{ route('admin.employers.seats.reissue', [$employer, $seat]) }}" style="display:inline-block;margin-left:6px;" onsubmit="return confirm({{ json_encode($mwReissueMsg) }});">
-                        @csrf
-                        <button type="submit" class="btn ghost sm">Reissue</button>
-                    </form>
+                    <details class="mw-menu">
+                        <summary aria-label="Seat actions">
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+                        </summary>
+                        <div class="pop">
+                            <button type="button" onclick="navigator.clipboard && navigator.clipboard.writeText({{ json_encode($seat->seat_code) }}).then(() => { this.textContent = 'Copied'; })">Copy code</button>
+                            <form method="POST" action="{{ route('admin.employers.seats.reissue', [$employer, $seat]) }}" onsubmit="return confirm({{ json_encode($mwReissueMsg) }});">
+                                @csrf
+                                <button type="submit">Reissue (new code)</button>
+                            </form>
+                            <hr>
+                            @if ($seat->is_active)
+                                <form method="POST" action="{{ route('admin.employers.seats.deactivate', [$employer, $seat]) }}">
+                                    @csrf
+                                    <button type="submit" class="danger">Switch off this seat</button>
+                                </form>
+                            @else
+                                <form method="POST" action="{{ route('admin.employers.seats.activate', [$employer, $seat]) }}">
+                                    @csrf
+                                    <button type="submit">Switch this seat back on</button>
+                                </form>
+                            @endif
+                        </div>
+                    </details>
                 </td>
             </tr>
             @empty
-            <tr><td colspan="6" style="padding:16px;color:var(--ink-500);">No seats generated.</td></tr>
+            <tr><td colspan="6"><div class="mw-empty"><div class="big">No seats generated</div></div></td></tr>
             @endforelse
         </tbody>
     </table>
 </div>
 
-<p style="font-size:11px;color:var(--ink-300);margin-top:12px;">
-    A client redeems one of these codes from their "Employer benefit" page. Once redeemed, "Assigned to" and
-    "Assigned at" fill in above and their sessions are free for as long as this employer's status stays Active
-    and its contract hasn't lapsed. "Sessions had" counts only sessions actually covered by this seat (booked
-    while it was active, with nothing paid or spent from a credit) — a session that client took before redeeming,
-    or after this benefit lapsed, won't be counted here.
-    <br><br>
-    "Deactivate employer" above cuts off every seat at once, immediately. Per-seat "Deactivate" only cuts off that
-    one person, leaving their history in place — use "Reactivate" to undo either one. "Reissue" clears a seat and
-    generates a brand-new code, so an old or leaked code stops working — use it when someone leaves the company
-    and the seat should go to a new hire instead. Still not built: reissuing doesn't currently notify anyone of
-    the new code, and there's no automatic warning as a contract's renewal date approaches — both worth a future
-    round if they matter.
+<p style="font-size:11px;color:var(--ink-300);margin-top:12px;line-height:1.6;">
+    A client redeems one of these codes from their "Employer benefit" page; their sessions are then free while this employer is Active
+    and its contract hasn't lapsed. "Sessions had" counts only sessions this seat actually covered. "Deactivate employer" cuts off every
+    seat at once; switching off one seat cuts off only that person. "Reissue" clears a seat and makes a new code — use it when someone
+    leaves and the seat should go to a new hire. Reissuing doesn't notify anyone of the new code yet.
 </p>
+
+<script>
+    document.addEventListener('click', function (e) {
+        document.querySelectorAll('details.mw-menu[open]').forEach(function (d) { if (! d.contains(e.target)) d.removeAttribute('open'); });
+    });
+</script>
 @endsection

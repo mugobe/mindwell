@@ -1,28 +1,52 @@
 <?php
 
 use App\Http\Controllers\Admin\AuditLogController;
+use App\Http\Controllers\Admin\CheckInOverviewController;
+use App\Http\Controllers\Admin\ClientController as AdminClientController;
+use App\Http\Controllers\Admin\ClientProgressController as AdminClientProgressController;
 use App\Http\Controllers\Admin\ClientSubscriptionController;
 use App\Http\Controllers\Admin\ClosedSessionController;
 use App\Http\Controllers\Admin\CrisisFlagController;
 use App\Http\Controllers\Admin\EmployerAccountController;
 use App\Http\Controllers\Admin\FacilityController;
+use App\Http\Controllers\Admin\VenueController;
+use App\Http\Controllers\Admin\VoucherController;
+use App\Http\Controllers\Admin\CalendarController as AdminCalendarController;
+use App\Http\Controllers\Admin\ScheduleRequestController;
 use App\Http\Controllers\Admin\IntakeReviewController;
+use App\Http\Controllers\Admin\PaymentController as AdminPaymentController;
+use App\Http\Controllers\Admin\RatingController as AdminRatingController;
 use App\Http\Controllers\Admin\ReferralController;
 use App\Http\Controllers\Admin\SessionRoutingController;
 use App\Http\Controllers\Admin\SubscriptionPlanController;
 use App\Http\Controllers\Admin\TherapistApprovalController;
 use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\ClientDetailsController;
+use App\Http\Controllers\ConsentController;
 use App\Http\Controllers\EmployerSeatController;
 use App\Http\Controllers\FlutterwavePaymentController;
 use App\Http\Controllers\IntakeController;
 use App\Http\Controllers\JournalController;
 use App\Http\Controllers\MessageController;
 use App\Http\Controllers\NotificationSettingsController;
+use App\Http\Controllers\PasswordChangeController;
+use App\Http\Controllers\PasswordResetController;
+use App\Http\Middleware\EnsureLegalAccepted;
+use App\Http\Middleware\EnsurePasswordChanged;
+use App\Http\Controllers\PaymentHistoryController;
+use App\Http\Controllers\ProgressController;
 use App\Http\Controllers\SessionHistoryController;
+use App\Http\Controllers\SessionChangeController;
+use App\Http\Controllers\SessionRatingController;
 use App\Http\Controllers\SessionRequestController;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\Therapist\AvailabilityController;
+use App\Http\Controllers\Therapist\CalendarController as TherapistCalendarController;
+use App\Http\Controllers\Therapist\ClientController as TherapistClientController;
+use App\Http\Controllers\Therapist\ProfileController as TherapistProfileController;
+use App\Http\Controllers\Therapist\StatsController as TherapistStatsController;
+use App\Http\Controllers\Therapist\ClientProgressController;
 use App\Http\Controllers\Therapist\ReportController as TherapistReportController;
 use App\Http\Controllers\Therapist\SessionController as TherapistSessionController;
 use App\Http\Controllers\TherapistBookingController;
@@ -34,6 +58,12 @@ Route::get('/', function () {
     return redirect()->route('login');
 });
 
+// Public pages (Phase 0, 2026-10-05): urgent help works WITHOUT an account — from
+// Dr. Ntabade's CLIENT DRAFT — and the Terms / Privacy pages linked from sign-up.
+Route::view('/urgent-help', 'urgent-help')->name('urgent-help');
+Route::view('/privacy', 'legal.privacy')->name('privacy');
+Route::view('/terms', 'legal.terms')->name('terms');
+
 Route::middleware('guest')->group(function () {
     Route::get('/register', [AuthController::class, 'showRegister'])->name('register');
     Route::post('/register', [AuthController::class, 'register']);
@@ -41,9 +71,15 @@ Route::middleware('guest')->group(function () {
     Route::post('/register/therapist', [TherapistRegistrationController::class, 'register']);
     Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
     Route::post('/login', [AuthController::class, 'login']);
+
+    // Forgot password (2026-10-04) — see PasswordResetController.
+    Route::get('/forgot-password', [PasswordResetController::class, 'request'])->name('password.request');
+    Route::post('/forgot-password', [PasswordResetController::class, 'email'])->middleware('throttle:5,1')->name('password.email');
+    Route::get('/reset-password/{token}', [PasswordResetController::class, 'edit'])->name('password.reset');
+    Route::post('/reset-password', [PasswordResetController::class, 'update'])->middleware('throttle:5,1')->name('password.update');
 });
 
-Route::middleware('auth')->group(function () {
+Route::middleware(['auth', EnsurePasswordChanged::class, EnsureLegalAccepted::class])->group(function () {
     Route::get('/dashboard', function () {
         return view('dashboard');
     })->name('dashboard');
@@ -66,6 +102,15 @@ Route::middleware('auth')->group(function () {
     Route::put('/settings/notifications', [NotificationSettingsController::class, 'update'])->name('settings.notifications.update');
     Route::post('/settings/notifications/test-sms', [NotificationSettingsController::class, 'testSms'])->middleware('throttle:3,10')->name('settings.notifications.test-sms');
 
+    // Change password (2026-10-04). Also where EnsurePasswordChanged sends someone who
+    // logged in with a temporary password from an admin.
+    Route::get('/settings/password', [PasswordChangeController::class, 'edit'])->name('password.change');
+    Route::put('/settings/password', [PasswordChangeController::class, 'update'])->middleware('throttle:6,1')->name('password.change.update');
+
+    // Terms / Privacy acceptance for existing accounts (Phase 0) — see EnsureLegalAccepted.
+    Route::get('/consent', [ConsentController::class, 'show'])->name('consent.show');
+    Route::post('/consent', [ConsentController::class, 'accept'])->name('consent.accept');
+
     Route::get('/messages', [MessageController::class, 'index'])->name('messages.index');
     Route::get('/messages/unread', [MessageController::class, 'unread'])->name('messages.unread');
     Route::get('/messages/with/{profileId}', [MessageController::class, 'start'])->name('messages.start');
@@ -74,12 +119,37 @@ Route::middleware('auth')->group(function () {
     Route::get('/messages/{conversation}/poll', [MessageController::class, 'poll'])->name('messages.poll');
 });
 
-Route::middleware(['auth', 'role:client'])->group(function () {
+Route::middleware(['auth', EnsurePasswordChanged::class, EnsureLegalAccepted::class, 'role:client'])->group(function () {
     Route::get('/intake', [IntakeController::class, 'show'])->name('intake.show');
     Route::post('/intake', [IntakeController::class, 'store'])->name('intake.store');
     Route::get('/intake/crisis', [IntakeController::class, 'crisis'])->name('intake.crisis');
 
     Route::get('/my-sessions', [SessionHistoryController::class, 'index'])->name('sessions.history');
+
+    // Payment history & receipts (2026-10-02) — see PaymentHistoryController.
+    Route::get('/payments', [PaymentHistoryController::class, 'index'])->name('payments.index');
+    Route::get('/payments/{transaction}/receipt', [PaymentHistoryController::class, 'receipt'])->name('payments.receipt');
+
+    // Progress & mood insights (2026-10-03) — see ProgressController / App\Models\CheckIn.
+    Route::get('/progress', [ProgressController::class, 'index'])->name('progress.index');
+    Route::get('/progress/check-in', [ProgressController::class, 'checkIn'])->name('progress.check-in');
+    Route::post('/progress/check-in', [ProgressController::class, 'store'])->name('progress.check-in.store');
+    Route::get('/progress/support', [ProgressController::class, 'crisis'])->name('progress.crisis');
+    Route::post('/progress/share-mood', [ProgressController::class, 'shareMood'])->name('progress.share-mood');
+
+    // Settings → My details (2026-10-06): what the therapist sees in the client file.
+    Route::get('/settings/details', [ClientDetailsController::class, 'edit'])->name('settings.details');
+    Route::put('/settings/details', [ClientDetailsController::class, 'update'])->name('settings.details.update');
+
+    // Richer intake (2026-10-09, roadmap 63): "About you" for clients who did intake before it existed,
+    // and to update answers later. See AboutYouController.
+    Route::get('/about-you', [\App\Http\Controllers\AboutYouController::class, 'edit'])->name('about.edit');
+    Route::put('/about-you', [\App\Http\Controllers\AboutYouController::class, 'update'])->name('about.update');
+    Route::post('/about-you/not-now', [\App\Http\Controllers\AboutYouController::class, 'dismiss'])->name('about.dismiss');
+
+    // Session feedback & ratings (2026-10-04) — see SessionRatingController.
+    Route::get('/sessions/{therapySession}/rate', [SessionRatingController::class, 'show'])->name('sessions.rate');
+    Route::post('/sessions/{therapySession}/rate', [SessionRatingController::class, 'store'])->middleware('throttle:10,1')->name('sessions.rate.store');
 
     Route::get('/sessions/{therapySession}/checkout', [SessionRequestController::class, 'checkout'])->name('sessions.checkout');
     Route::post('/sessions/{therapySession}/pay', [SessionRequestController::class, 'pay'])->name('sessions.pay');
@@ -88,6 +158,10 @@ Route::middleware(['auth', 'role:client'])->group(function () {
     Route::get('/sessions/{therapySession}/status', [SessionRequestController::class, 'status'])->name('sessions.status');
     Route::get('/sessions/{therapySession}/connected', [SessionRequestController::class, 'connected'])->name('sessions.connected');
     Route::post('/sessions/{therapySession}/cancel', [SessionRequestController::class, 'cancel'])->name('sessions.cancel');
+    // Calendar (2026-10-08): ask to move or cancel a confirmed session; admin approves.
+    Route::get('/sessions/{therapySession}/change', [SessionChangeController::class, 'show'])->name('sessions.change');
+    Route::post('/sessions/{therapySession}/change', [SessionChangeController::class, 'store'])->middleware('throttle:10,1')->name('sessions.change.store');
+    Route::post('/change-requests/{changeRequest}/withdraw', [SessionChangeController::class, 'withdraw'])->name('sessions.change.withdraw');
 
     Route::get('/therapists', [TherapistBookingController::class, 'browse'])->name('therapists.browse');
     Route::get('/therapists/{therapist}', [TherapistBookingController::class, 'show'])->name('therapists.book');
@@ -98,6 +172,9 @@ Route::middleware(['auth', 'role:client'])->group(function () {
     Route::get('/subscription', [SubscriptionController::class, 'index'])->name('subscription.index');
     Route::get('/subscription/{plan}/checkout', [SubscriptionController::class, 'checkout'])->name('subscription.checkout');
     Route::post('/subscription/{plan}/subscribe', [SubscriptionController::class, 'subscribe'])->name('subscription.subscribe');
+    // Renewals (2026-10-01) — pay for the next period of the current plan.
+    Route::get('/subscription/renew', [SubscriptionController::class, 'renewCheckout'])->name('subscription.renew');
+    Route::post('/subscription/renew', [SubscriptionController::class, 'renew'])->name('subscription.renew.pay');
 
     // Employer seat redemption, added 2026-09-27 — see EmployerSeatController docblock.
     // Unlike the subscription routes above, this grants no credit count: redeeming just
@@ -146,16 +223,24 @@ Route::middleware(['auth', 'role:client'])->group(function () {
  */
 Route::post('/webhooks/flutterwave', [FlutterwavePaymentController::class, 'webhook'])->name('webhooks.flutterwave');
 
-Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(function () {
+Route::middleware(['auth', EnsurePasswordChanged::class, EnsureLegalAccepted::class, 'admin'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('/users', [UserController::class, 'index'])->name('users.index');
+    Route::get('/search', \App\Http\Controllers\Admin\SearchController::class)->name('search');
     Route::post('/users/{user}/suspend', [UserController::class, 'suspend'])->name('users.suspend');
     Route::post('/users/{user}/activate', [UserController::class, 'activate'])->name('users.activate');
+    Route::post('/users/{user}/send-reset', [UserController::class, 'sendResetLink'])->middleware('throttle:10,1')->name('users.send-reset');
+    Route::post('/users/{user}/temporary-password', [UserController::class, 'temporaryPassword'])->middleware('throttle:10,1')->name('users.temporary-password');
 
     Route::get('/therapists', [TherapistApprovalController::class, 'index'])->name('therapists.index');
     Route::get('/therapists/create', [TherapistApprovalController::class, 'create'])->name('therapists.create');
     Route::post('/therapists', [TherapistApprovalController::class, 'store'])->name('therapists.store');
     Route::post('/therapists/{therapist}/approve', [TherapistApprovalController::class, 'approve'])->name('therapists.approve');
     Route::post('/therapists/{therapist}/reject', [TherapistApprovalController::class, 'reject'])->name('therapists.reject');
+    // Licence changes requested from a therapist's own profile (2026-10-06).
+    Route::post('/therapists/{therapist}/license/approve', [TherapistApprovalController::class, 'approveLicense'])->name('therapists.license.approve');
+    Route::post('/therapists/{therapist}/license/reject', [TherapistApprovalController::class, 'rejectLicense'])->name('therapists.license.reject');
+    // In-person sessions (2026-10-07).
+    Route::post('/therapists/{therapist}/in-person', [TherapistApprovalController::class, 'toggleInPerson'])->name('therapists.in-person');
 
     Route::get('/intake-reviews', [IntakeReviewController::class, 'index'])->name('intake.index');
 
@@ -189,6 +274,15 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::post('/session-routing/{therapySession}/assign', [SessionRoutingController::class, 'assign'])->name('session-routing.assign');
     Route::post('/session-routing/{therapySession}/approve', [SessionRoutingController::class, 'approve'])->name('session-routing.approve');
     Route::post('/session-routing/{therapySession}/decline', [SessionRoutingController::class, 'decline'])->name('session-routing.decline');
+    Route::post('/session-routing/{therapySession}/location', [SessionRoutingController::class, 'location'])->name('session-routing.location');
+    // Calendar (2026-10-08).
+    Route::get('/calendar', [AdminCalendarController::class, 'index'])->name('calendar');
+    Route::post('/sessions/{therapySession}/reschedule', [AdminCalendarController::class, 'reschedule'])->name('sessions.reschedule');
+    Route::post('/sessions/{therapySession}/cancel', [AdminCalendarController::class, 'cancel'])->name('sessions.cancel');
+    Route::get('/schedule-requests', [ScheduleRequestController::class, 'index'])->name('schedule-requests.index');
+    Route::post('/schedule-requests/{changeRequest}/approve', [ScheduleRequestController::class, 'approve'])->name('schedule-requests.approve');
+    Route::post('/schedule-requests/{changeRequest}/decline', [ScheduleRequestController::class, 'decline'])->name('schedule-requests.decline');
+    Route::post('/time-off/{timeOff}/decide', [ScheduleRequestController::class, 'decideTimeOff'])->name('time-off.decide');
 
     Route::get('/closed-sessions', [ClosedSessionController::class, 'index'])->name('closed-sessions.index');
     Route::get('/closed-sessions/{therapySession}', [ClosedSessionController::class, 'show'])->name('closed-sessions.show');
@@ -200,17 +294,58 @@ Route::middleware(['auth', 'admin'])->prefix('admin')->name('admin.')->group(fun
     Route::get('/facilities/{facility}/edit', [FacilityController::class, 'edit'])->name('facilities.edit');
     Route::put('/facilities/{facility}', [FacilityController::class, 'update'])->name('facilities.update');
 
+    // Richer intake (2026-10-09, roadmap 63): admin switches the "About you" sections on/off.
+    Route::get('/intake-settings', [\App\Http\Controllers\Admin\IntakeSettingsController::class, 'edit'])->name('intake-settings.edit');
+    Route::put('/intake-settings', [\App\Http\Controllers\Admin\IntakeSettingsController::class, 'update'])->name('intake-settings.update');
+
+    // In-person venues + vouchers (2026-10-07).
+    Route::get('/venues', [VenueController::class, 'index'])->name('venues.index');
+    Route::get('/venues/create', [VenueController::class, 'create'])->name('venues.create');
+    Route::post('/venues', [VenueController::class, 'store'])->name('venues.store');
+    Route::get('/venues/{venue}/edit', [VenueController::class, 'edit'])->name('venues.edit');
+    Route::put('/venues/{venue}', [VenueController::class, 'update'])->name('venues.update');
+    Route::get('/vouchers', [VoucherController::class, 'index'])->name('vouchers.index');
+    Route::get('/vouchers/create', [VoucherController::class, 'create'])->name('vouchers.create');
+    Route::post('/vouchers', [VoucherController::class, 'store'])->name('vouchers.store');
+    Route::get('/vouchers/{voucher}/edit', [VoucherController::class, 'edit'])->name('vouchers.edit');
+    Route::put('/vouchers/{voucher}', [VoucherController::class, 'update'])->name('vouchers.update');
+    Route::post('/vouchers/{voucher}/toggle', [VoucherController::class, 'toggle'])->name('vouchers.toggle');
+
     Route::get('/referrals', [ReferralController::class, 'index'])->name('referrals.index');
     Route::post('/referrals/{therapySession}/assign', [ReferralController::class, 'assign'])->name('referrals.assign');
 
     Route::get('/client-subscriptions', [ClientSubscriptionController::class, 'index'])->name('client-subscriptions.index');
     Route::post('/client-subscriptions', [ClientSubscriptionController::class, 'store'])->name('client-subscriptions.store');
+    Route::post('/client-subscriptions/{subscription}/renew-cash', [ClientSubscriptionController::class, 'renewCash'])->name('client-subscriptions.renew-cash');
+
+    // Payments & revenue (2026-10-02) — see Admin\PaymentController.
+    Route::get('/payments', [AdminPaymentController::class, 'index'])->name('payments.index');
+    Route::get('/payments/export', [AdminPaymentController::class, 'export'])->name('payments.export');
+    Route::get('/payments/{transaction}/receipt', [AdminPaymentController::class, 'receipt'])->name('payments.receipt');
+    Route::post('/payments/{transaction}/refund', [AdminPaymentController::class, 'refund'])->name('payments.refund');
+
+    // A client's progress (2026-10-03) — same page therapists see, minus the mood chart.
+    // Clients list + client file (2026-10-06) — same pages therapists see for their own clients.
+    // Check-in overview (2026-10-06, roadmap 28).
+    Route::get('/check-ins', [CheckInOverviewController::class, 'index'])->name('check-ins.index');
+    Route::get('/clients', [AdminClientController::class, 'index'])->name('clients.index');
+    Route::get('/clients/{clientProfile}', [AdminClientController::class, 'show'])->name('clients.show');
+    Route::get('/clients/{clientProfile}/progress', [AdminClientProgressController::class, 'show'])->name('clients.progress');
+
+    // Session ratings (2026-10-04) — see Admin\RatingController.
+    Route::get('/ratings', [AdminRatingController::class, 'index'])->name('ratings.index');
 });
 
-Route::middleware(['auth', 'role:therapist'])->prefix('therapist')->name('therapist.')->group(function () {
+Route::middleware(['auth', EnsurePasswordChanged::class, EnsureLegalAccepted::class, 'role:therapist'])->prefix('therapist')->name('therapist.')->group(function () {
     Route::get('/availability', [AvailabilityController::class, 'index'])->name('availability.index');
     Route::post('/availability', [AvailabilityController::class, 'store'])->name('availability.store');
     Route::delete('/availability/{slot}', [AvailabilityController::class, 'destroy'])->name('availability.destroy');
+    // Calendar (2026-10-08).
+    Route::get('/calendar', [TherapistCalendarController::class, 'index'])->name('calendar');
+    Route::post('/sessions/{therapySession}/change-request', [TherapistCalendarController::class, 'requestChange'])->middleware('throttle:10,1')->name('sessions.change-request');
+    Route::post('/change-requests/{changeRequest}/withdraw', [TherapistCalendarController::class, 'withdraw'])->name('change-requests.withdraw');
+    Route::post('/time-off', [TherapistCalendarController::class, 'storeTimeOff'])->name('time-off.store');
+    Route::post('/time-off/{timeOff}/cancel', [TherapistCalendarController::class, 'cancelTimeOff'])->name('time-off.cancel');
 
     Route::get('/sessions', [TherapistSessionController::class, 'index'])->name('sessions.index');
     Route::get('/sessions/{therapySession}/close', [TherapistSessionController::class, 'close'])->name('sessions.close');
@@ -219,4 +354,13 @@ Route::middleware(['auth', 'role:therapist'])->prefix('therapist')->name('therap
     Route::get('/reports', [TherapistReportController::class, 'index'])->name('reports.index');
     Route::get('/reports/{therapySession}', [TherapistReportController::class, 'show'])->name('reports.show');
     Route::get('/reports/{therapySession}/pdf', [TherapistReportController::class, 'pdf'])->name('reports.pdf');
+
+    // A client's progress since intake (2026-10-03) — see Therapist\ClientProgressController.
+    // Therapist workspace (2026-10-06): My clients + client file, My stats, My profile.
+    Route::get('/clients', [TherapistClientController::class, 'index'])->name('clients.index');
+    Route::get('/clients/{clientProfile}', [TherapistClientController::class, 'show'])->name('clients.show');
+    Route::get('/stats', [TherapistStatsController::class, 'index'])->name('stats');
+    Route::get('/profile', [TherapistProfileController::class, 'edit'])->name('profile.edit');
+    Route::put('/profile', [TherapistProfileController::class, 'update'])->name('profile.update');
+    Route::get('/clients/{clientProfile}/progress', [ClientProgressController::class, 'show'])->name('clients.progress');
 });

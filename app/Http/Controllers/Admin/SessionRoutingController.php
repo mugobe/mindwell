@@ -7,6 +7,8 @@ use App\Models\AuditLog;
 use App\Models\ClientSubscription;
 use App\Models\TherapistProfile;
 use App\Models\TherapySession;
+use App\Models\Venue;
+use App\Services\Notifier;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -50,7 +52,17 @@ class SessionRoutingController extends Controller
             ->limit(10)
             ->get();
 
-        return view('admin.session-routing.index', compact('waiting', 'verifiedTherapists', 'pendingApprovals', 'recentFollowUps'));
+        // In-person sessions (2026-10-07): venues to pick from on approval, and the
+        // upcoming confirmed ones so admin can change where they happen.
+        $venues = Venue::where('is_active', true)->orderBy('name')->get();
+        $upcomingInPerson = TherapySession::with('clientProfile.user', 'therapistProfile.user', 'venue')
+            ->where('session_mode', TherapySession::MODE_IN_PERSON)
+            ->where('status', 'scheduled')
+            ->where('scheduled_at', '>=', now()->subHours(2))
+            ->orderBy('scheduled_at')
+            ->get();
+
+        return view('admin.session-routing.index', compact('waiting', 'verifiedTherapists', 'pendingApprovals', 'recentFollowUps', 'venues', 'upcomingInPerson'));
     }
 
     public function assign(Request $request, TherapySession $therapySession): RedirectResponse
@@ -82,10 +94,14 @@ class SessionRoutingController extends Controller
     {
         abort_unless($therapySession->status === 'pending_approval', 409, 'This session is no longer awaiting approval.');
 
-        $therapySession->update([
+        // In-person (2026-10-07): admin says where it happens before confirming, so the
+        // confirmation email the client and therapist get already has the address.
+        $location = $therapySession->isInPerson() ? $this->validatedLocation($request) : [];
+
+        $therapySession->update(array_merge($location, [
             'status' => 'scheduled',
             'approved_at' => now(),
-        ]);
+        ]));
 
         AuditLog::record($request, 'session.approved', 'Approved a directly booked or therapist-scheduled session.', [
             'therapy_session_id' => $therapySession->id,
@@ -93,6 +109,41 @@ class SessionRoutingController extends Controller
         ]);
 
         return back()->with('status', 'Session approved and confirmed for the client.');
+    }
+
+    /**
+     * Change where a confirmed in-person session happens (2026-10-07). The client and
+     * therapist are told about the new place.
+     */
+    public function location(Request $request, TherapySession $therapySession): RedirectResponse
+    {
+        abort_unless($therapySession->isInPerson() && $therapySession->status === 'scheduled', 409, 'Only confirmed in-person sessions have a location to change.');
+
+        $therapySession->update($this->validatedLocation($request));
+
+        AuditLog::record($request, 'session.location_changed', 'Changed where an in-person session happens: '.$therapySession->fresh('venue')->locationText(), [
+            'therapy_session_id' => $therapySession->id,
+        ]);
+
+        app(Notifier::class)->sessionLocationChanged($therapySession);
+
+        return back()->with('status', 'Location updated. The client and therapist have been told.');
+    }
+
+    /** A venue from the list, extra details (room, floor, or a one-off place), or both. */
+    private function validatedLocation(Request $request): array
+    {
+        $data = $request->validate([
+            'venue_id' => ['nullable', 'uuid', 'exists:venues,id'],
+            'location_details' => ['nullable', 'string', 'max:1000', 'required_without:venue_id'],
+        ], [
+            'location_details.required_without' => 'Pick a venue or type where the session will happen.',
+        ]);
+
+        return [
+            'venue_id' => $data['venue_id'] ?? null,
+            'location_details' => filled($data['location_details'] ?? null) ? trim($data['location_details']) : null,
+        ];
     }
 
     /**

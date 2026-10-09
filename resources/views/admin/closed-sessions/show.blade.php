@@ -27,6 +27,12 @@
         <div>
             <div class="mw-label">Closed out</div>
             <div style="color:var(--ink-900);">{{ $session->closed_at?->format('M j, Y g:i A') ?? '—' }}</div>
+            @if ($session->session_number)
+                <div style="font-size:11.5px;color:var(--ink-500);margin-top:2px;">Session #{{ $session->session_number }} for this client</div>
+            @endif
+            @if ($session->isInPerson())
+                <div style="font-size:11.5px;color:var(--ink-500);margin-top:2px;">In person{{ $session->locationText() ? ' · '.$session->locationText() : '' }}</div>
+            @endif
         </div>
     </div>
 
@@ -68,6 +74,14 @@
                 <div class="mw-label">Plan / next steps</div>
                 <p style="font-size:13.5px;color:var(--ink-900);white-space:pre-wrap;line-height:1.6;margin-top:4px;">{{ $session->plan_notes ?: '—' }}</p>
             </div>
+            @foreach (['interventions_used' => 'Interventions used', 'homework' => 'Homework / activities given', 'goals_progress' => 'Progress toward goals'] as $mwField => $mwLabel)
+                @if ($session->{$mwField})
+                    <div>
+                        <div class="mw-label">{{ $mwLabel }}</div>
+                        <p style="font-size:13.5px;color:var(--ink-900);white-space:pre-wrap;line-height:1.6;margin-top:4px;">{{ $session->{$mwField} }}</p>
+                    </div>
+                @endif
+            @endforeach
         </div>
     @else
         <div class="mw-label">Report</div>

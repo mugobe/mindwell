@@ -67,6 +67,26 @@
         <button type="submit" class="btn coral" style="border-radius:999px;margin-top:18px;padding-left:26px;padding-right:26px;">Save</button>
     </form>
 
+    {{-- Added 2026-10-06: My details (clients) / My profile (therapists). --}}
+    @if ($user->role === 'client' || $user->role === 'therapist')
+        <div class="card" style="margin-top:14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:16px 22px;">
+            <div>
+                <div style="font-size:14px;font-weight:700;color:var(--ink-900);">{{ $user->role === 'client' ? 'My details' : 'My profile' }}</div>
+                <div style="font-size:12.5px;color:var(--ink-500);">{{ $user->role === 'client' ? 'Name, date of birth, preferred language and emergency contact.' : 'Photo, bio, languages and qualifications clients see.' }}</div>
+            </div>
+            <a href="{{ $user->role === 'client' ? route('settings.details') : route('therapist.profile.edit') }}" class="btn ghost sm" style="border-radius:999px;">Edit</a>
+        </div>
+    @endif
+
+    {{-- Added 2026-10-04. --}}
+    <div class="card" style="margin-top:14px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:16px 22px;">
+        <div>
+            <div style="font-size:14px;font-weight:700;color:var(--ink-900);">Password</div>
+            <div style="font-size:12.5px;color:var(--ink-500);">Change the password you use to log in.</div>
+        </div>
+        <a href="{{ route('password.change') }}" class="btn ghost sm" style="border-radius:999px;">Change password</a>
+    </div>
+
     @if ($user->phone)
         <form method="POST" action="{{ route('settings.notifications.test-sms') }}" style="text-align:center;margin-top:14px;">
             @csrf

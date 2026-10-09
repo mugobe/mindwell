@@ -26,6 +26,9 @@ class MindwellNotice extends Notification
         public array $lines,
         public ?string $actionText = null,
         public ?string $actionUrl = null,
+        // Receipts (2026-10-02) always go out, so they swap the "turn these off" line
+        // for their own footer. Everything else keeps the default.
+        public ?string $footer = 'You can turn these emails off in Settings in Mindwell.',
     ) {}
 
     public function via(object $notifiable): array
@@ -47,8 +50,10 @@ class MindwellNotice extends Notification
             $mail->action($this->actionText, $this->actionUrl);
         }
 
-        return $mail
-            ->line('You can turn these emails off in Settings in Mindwell.')
-            ->salutation('Take care, the Mindwell team');
+        if ($this->footer) {
+            $mail->line($this->footer);
+        }
+
+        return $mail->salutation('Take care, the Mindwell team');
     }
 }

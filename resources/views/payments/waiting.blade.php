@@ -20,7 +20,7 @@
     <div class="card" style="background:var(--ink-050,#f7f7f8);padding:16px;margin-bottom:22px;">
         <div style="font-size:24px;font-weight:800;color:var(--ink-900);">{{ $transaction->currency }} {{ number_format($transaction->amount, 0) }}</div>
         <div style="font-size:11.5px;color:var(--ink-300);margin-top:4px;">
-            {{ $transaction->purpose === 'subscription' ? 'Subscription payment' : 'Session payment' }} · waiting for approval
+            {{ $transaction->purpose === 'subscription' ? ($transaction->client_subscription_id ? 'Plan renewal' : 'Subscription payment') : 'Session payment' }} · waiting for approval
         </div>
     </div>
 

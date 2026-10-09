@@ -94,7 +94,11 @@ class SessionController extends Controller
             ->limit(10)
             ->get();
 
-        return view('therapist.sessions.index', compact('upcoming', 'recentlyClosed'));
+        // Their own client-rating average (2026-10-04) — null until they have at least
+        // SessionRating::MIN_FOR_THERAPIST ratings. Never individual ratings or comments.
+        $ratingSummary = \App\Models\SessionRating::summaryForTherapist($profile->id);
+
+        return view('therapist.sessions.index', compact('upcoming', 'recentlyClosed', 'ratingSummary'));
     }
 
     public function close(Request $request, TherapySession $therapySession): View
@@ -142,8 +146,13 @@ class SessionController extends Controller
             'progress_notes' => ['required', 'string', 'max:2000'],
             'risk_assessment' => ['required', 'string', 'max:2000'],
             'plan_notes' => ['required', 'string', 'max:2000'],
+            // Richer notes (2026-10-06, Dr. Ntabade's THERAPIST DRAFT) — optional.
+            'interventions_used' => ['nullable', 'string', 'max:2000'],
+            'homework' => ['nullable', 'string', 'max:2000'],
+            'goals_progress' => ['nullable', 'string', 'max:2000'],
             'follow_up_at' => ['required_if:closure_outcome,schedule_next_session', 'nullable', 'date', 'after:now'],
             'follow_up_notes' => ['nullable', 'string', 'max:1000'],
+            'follow_up_mode' => ['nullable', 'in:'.implode(',', array_keys(TherapySession::MODES))],
         ]);
 
         $therapySession->update([
@@ -154,6 +163,14 @@ class SessionController extends Controller
             'progress_notes' => $validated['progress_notes'],
             'risk_assessment' => $validated['risk_assessment'],
             'plan_notes' => $validated['plan_notes'],
+            'interventions_used' => $validated['interventions_used'] ?? null,
+            'homework' => $validated['homework'] ?? null,
+            'goals_progress' => $validated['goals_progress'] ?? null,
+            // This client's nth completed session (with any therapist), counted now.
+            'session_number' => TherapySession::where('client_profile_id', $therapySession->client_profile_id)
+                ->where('status', 'completed')
+                ->where('id', '!=', $therapySession->id)
+                ->count() + 1,
             'closed_at' => now(),
             'referred_at' => $validated['closure_outcome'] === 'refer_to_specialist' ? now() : null,
         ]);
@@ -164,7 +181,9 @@ class SessionController extends Controller
         ]);
 
         if ($validated['closure_outcome'] === 'schedule_next_session' && ! empty($validated['follow_up_at'])) {
-            $this->scheduleFollowUp($request, $therapySession, $profile, $validated['follow_up_at'], $validated['follow_up_notes'] ?? null);
+            $mode = ($validated['follow_up_mode'] ?? null) === TherapySession::MODE_IN_PERSON && $profile->offers_in_person
+                ? TherapySession::MODE_IN_PERSON : TherapySession::MODE_VIDEO;
+            $this->scheduleFollowUp($request, $therapySession, $profile, $validated['follow_up_at'], $validated['follow_up_notes'] ?? null, $mode);
         }
 
         return redirect()->route('therapist.sessions.index')->with('status', 'Session closed out.');
@@ -179,17 +198,16 @@ class SessionController extends Controller
      * feedback) is a short note about what to focus on next time -- stored on the NEW
      * session, deliberately separate from the closure report on the one being closed.
      */
-    private function scheduleFollowUp(Request $request, TherapySession $original, $profile, string $followUpAt, ?string $followUpNotes): void
+    private function scheduleFollowUp(Request $request, TherapySession $original, $profile, string $followUpAt, ?string $followUpNotes, string $mode = TherapySession::MODE_VIDEO): void
     {
         $clientProfileId = $original->client_profile_id;
 
         // Employer seat coverage (2026-09-27) is checked FIRST, ahead of a subscription
         // credit — see the same note in IntakeController::store().
         $employerSeat = EmployerSeat::activeFor($clientProfileId);
-        $activeSubscription = $employerSeat ? null : ClientSubscription::where('client_profile_id', $clientProfileId)
-            ->where('status', 'active')
-            ->where('sessions_remaining', '>', 0)
-            ->first();
+        // usableFor() (2026-10-01) also applies renewals/expiry first, so a plan whose
+        // period (and grace period) has run out can no longer be booked against.
+        $activeSubscription = $employerSeat ? null : ClientSubscription::usableFor($clientProfileId);
         $isCovered = $employerSeat || $activeSubscription;
 
         // 2026-09-26 (third round of client testing feedback): this used to jump
@@ -207,6 +225,7 @@ class SessionController extends Controller
             'scheduled_at' => $followUpAt,
             'duration_minutes' => config('mindwell.session_duration_minutes'),
             'follow_up_notes' => $followUpNotes,
+            'session_mode' => $mode,
         ]);
 
         if ($activeSubscription) {
@@ -228,32 +247,8 @@ class SessionController extends Controller
      */
     private function projectOwnSlots($profile)
     {
-        $now = Carbon::now();
-        $slots = collect();
-
-        for ($daysAhead = 0; $daysAhead < 7; $daysAhead++) {
-            $date = $now->copy()->addDays($daysAhead);
-            $dayName = strtolower($date->format('l'));
-
-            foreach ($profile->availabilitySlots()->where('day_of_week', $dayName)->where('is_recurring', true)->get() as $slot) {
-                $candidate = $date->copy()->setTimeFromTimeString((string) $slot->start_time);
-
-                if ($candidate->isPast()) {
-                    continue;
-                }
-
-                $taken = TherapySession::where('therapist_profile_id', $profile->id)
-                    ->where('status', 'scheduled')
-                    ->where('scheduled_at', $candidate)
-                    ->exists();
-
-                if (! $taken) {
-                    $slots->push($candidate);
-                }
-            }
-        }
-
-        return $slots->sort()->values();
+        // 2026-10-08: the shared projection (skips booked/waiting times and time off).
+        return app(\App\Services\OpenSlots::class)->for($profile, 7);
     }
 
     /**

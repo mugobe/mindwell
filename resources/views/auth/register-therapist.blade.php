@@ -6,7 +6,7 @@
         <div class="icon">🩺</div>
         <div style="font-size:24px;font-weight:800;margin-bottom:8px;">Join Mindwell as a therapist</div>
         <div style="font-size:14px;opacity:.85;line-height:1.6;max-width:320px;">
-            Set your own hours, get matched with clients who fit your specialties, and get paid automatically after each session.
+            Set your hours and get matched with clients who fit your specialties. Mindwell's team handles booking and routing.
         </div>
         <div style="font-size:11px;opacity:.65;margin-top:28px;line-height:1.6;max-width:320px;">
             Every application is reviewed by our credentialing team before you can accept clients — you'll be notified once you're verified.
@@ -80,6 +80,17 @@
                     <input class="mw-field" type="number" step="0.01" min="0" id="hourly_rate" name="hourly_rate" value="{{ old('hourly_rate') }}" placeholder="e.g. 85">
                 </div>
 
+                {{-- Phase 0 (2026-10-05): consent recorded for therapists too. --}}
+                <div style="display:flex;flex-direction:column;gap:8px;font-size:12.5px;color:var(--ink-700);">
+                    <label style="display:flex;gap:8px;align-items:flex-start;">
+                        <input type="checkbox" name="accept_privacy" value="1" {{ old('accept_privacy') ? 'checked' : '' }} required style="margin-top:2px;">
+                        <span>I agree to the <a href="{{ route('privacy') }}" target="_blank" style="color:var(--teal-700);font-weight:700;">Privacy Policy</a></span>
+                    </label>
+                    <label style="display:flex;gap:8px;align-items:flex-start;">
+                        <input type="checkbox" name="accept_terms" value="1" {{ old('accept_terms') ? 'checked' : '' }} required style="margin-top:2px;">
+                        <span>I agree to the <a href="{{ route('terms') }}" target="_blank" style="color:var(--teal-700);font-weight:700;">Terms of Use</a></span>
+                    </label>
+                </div>
                 <button type="submit" class="btn coral block" style="margin-top:6px;">Submit application</button>
             </form>
 

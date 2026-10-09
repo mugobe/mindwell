@@ -110,6 +110,15 @@
     .mw-thanks { border-radius:22px; padding:40px 28px; text-align:center; background:
         radial-gradient(ellipse 36% 30% at 10% 15%, var(--mw-blush, #F5DCE2) 0 60%, transparent 62%),
         radial-gradient(ellipse 30% 28% at 92% 85%, var(--mw-sage, #DEE8CE) 0 60%, transparent 62%), #fffdf8; }
+    /* session feedback on the thank-you screen (2026-10-04) */
+    .mw-rate { max-width:420px; margin:0 auto 22px; padding:18px; border-radius:16px; background:#fff; border:1px solid rgba(0,0,0,.06); text-align:center; }
+    .mw-stars { display:inline-flex; flex-direction:row-reverse; gap:4px; margin:8px 0 4px; }
+    .mw-stars input { position:absolute; opacity:0; width:0; height:0; }
+    .mw-stars label { font-size:32px; line-height:1; color:#d8dedc; cursor:pointer; padding:2px; transition:color .1s, transform .1s; }
+    .mw-stars label:hover, .mw-stars label:hover ~ label, .mw-stars input:checked ~ label { color:#e8a33d; }
+    .mw-stars input:focus-visible + label { outline:2px solid var(--teal-600, #2f6f66); outline-offset:2px; border-radius:6px; }
+    .mw-stars label:active { transform:scale(.9); }
+    .mw-rate textarea { width:100%; box-sizing:border-box; min-height:64px; margin-top:8px; font-size:13px; }
     .mw-modal { position:fixed; inset:0; background:rgba(20,30,28,.45); display:flex; align-items:center; justify-content:center; z-index:50; padding:16px; }
     .mw-modal-card { background:#fff; border-radius:18px; padding:24px; max-width:360px; width:100%; text-align:center; box-shadow:0 20px 50px rgba(0,0,0,.25); }
     .mw-hidden { display:none !important; }
@@ -254,6 +263,26 @@
                         Give yourself a moment before jumping back into your day — a glass of water, a few slow breaths.
                         Your notes from this session are saved in your journal.
                     </p>
+                    @if (! empty($jsConfig['canRate']))
+                        {{-- Session feedback (2026-10-04) — see SessionRatingController. --}}
+                        <form class="mw-rate" id="mw-rate" novalidate>
+                            <div style="font-size:14px;font-weight:800;color:var(--ink-900);">How was today's session?</div>
+                            <div class="mw-stars" role="radiogroup" aria-label="Rate this session from 1 to 5 stars">
+                                @for ($star = 5; $star >= 1; $star--)
+                                    <input type="radio" name="rating" id="mw-star-{{ $star }}" value="{{ $star }}">
+                                    <label for="mw-star-{{ $star }}" title="{{ $star }} of 5" aria-label="{{ $star }} of 5 stars">★</label>
+                                @endfor
+                            </div>
+                            <textarea class="mw-field" name="comment" maxlength="2000" placeholder="Anything you'd like to tell us? (optional)"></textarea>
+                            <div style="font-size:11px;color:var(--ink-500);margin-top:4px;">Only the Mindwell team reads comments — your therapist doesn't see them.</div>
+                            <div id="mw-rate-error" class="mw-hidden" style="font-size:12px;color:var(--danger, #c0392b);margin-top:6px;"></div>
+                            <div style="display:flex;gap:8px;justify-content:center;margin-top:12px;">
+                                <button type="submit" class="btn primary sm" style="border-radius:999px;padding-left:20px;padding-right:20px;">Send feedback</button>
+                                <button type="button" class="btn ghost sm" id="mw-rate-skip" style="border-radius:999px;">Skip</button>
+                            </div>
+                        </form>
+                        <div class="mw-rate mw-hidden" id="mw-rate-done" style="font-size:13px;color:var(--ink-700);">Thank you for your feedback — it helps us look after you well.</div>
+                    @endif
                     <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
                         <a href="{{ route('journal.index') }}" class="btn coral" style="border-radius:999px;">Open my journal</a>
                         <a href="{{ route('sessions.history') }}" class="btn ghost" style="border-radius:999px;">Back to my sessions</a>
@@ -627,6 +656,42 @@
                 catch (e) { setProblem('camera', explainMediaError('camera', e)); }
                 refreshInCall();
             });
+
+            // ---- Session feedback on the thank-you screen (2026-10-04)
+            var rateForm = $('mw-rate');
+            async function sendRating(payload) {
+                var err = $('mw-rate-error');
+                show(err, false);
+                try {
+                    var res = await fetch(cfg.rateUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': cfg.csrf },
+                        body: JSON.stringify(payload),
+                    });
+                    if (!res.ok) { throw new Error(res.status); }
+                    show(rateForm, false);
+                    if (!payload.skip) { show($('mw-rate-done'), true); }
+                } catch (e) {
+                    err.textContent = "That didn't send — please try again.";
+                    show(err, true);
+                }
+            }
+            if (rateForm && cfg.rateUrl) {
+                rateForm.addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    var picked = rateForm.querySelector('input[name=rating]:checked');
+                    if (!picked) {
+                        $('mw-rate-error').textContent = 'Tap a star to rate, or press Skip.';
+                        show($('mw-rate-error'), true);
+                        return;
+                    }
+                    sendRating({ rating: parseInt(picked.value, 10), comment: rateForm.comment.value });
+                });
+                $('mw-rate-skip').addEventListener('click', function () { sendRating({ skip: true }); });
+                rateForm.querySelectorAll('input[name=rating]').forEach(function (r) {
+                    r.addEventListener('change', function () { show($('mw-rate-error'), false); });
+                });
+            }
 
             // ---- Leaving (with confirmation)
             $('mw-leave').addEventListener('click', function () { show($('mw-leave-modal'), true); $('mw-leave-cancel').focus(); });

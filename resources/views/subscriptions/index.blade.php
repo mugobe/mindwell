@@ -8,17 +8,69 @@
 </div>
 
 @if ($activeSubscription)
-    <div class="card" style="margin-bottom:20px;">
+    @php
+        // Renewal-aware current plan card (2026-10-01) — see ClientSubscription::phase().
+        $currentPlan = $activeSubscription->subscriptionPlan;
+        $renewsOn = $activeSubscription->current_period_end;
+        $daysToRenewal = (int) today()->diffInDays($renewsOn, false);
+        $planIncluded = (int) ($currentPlan?->sessions_included ?? 0);
+        $urgent = in_array($phase, ['ending_soon', 'grace'], true);
+    @endphp
+    <div class="card" style="margin-bottom:20px;{{ $phase === 'grace' ? 'border-left:4px solid var(--coral-500, #E2725B);' : '' }}">
         <div class="section-title">Current plan</div>
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
             <div>
-                <div style="font-size:17px;font-weight:800;color:var(--ink-900);">{{ $activeSubscription->subscriptionPlan->name }}</div>
+                <div style="font-size:17px;font-weight:800;color:var(--ink-900);">{{ $currentPlan->name }}</div>
                 <div style="font-size:12.5px;color:var(--ink-500);margin-top:2px;">
-                    Renews {{ $activeSubscription->current_period_end?->format('M j, Y') ?? '—' }}
+                    @if ($phase === 'renewed')
+                        Renewed — your next period starts {{ $renewsOn->format('D j M') }} with {{ $planIncluded }} credit{{ $planIncluded === 1 ? '' : 's' }}.
+                    @elseif ($phase === 'grace')
+                        Was due for renewal on {{ $renewsOn->format('D j M') }}. You can keep using it until {{ $activeSubscription->lastUsableDay()->format('D j M') }}.
+                    @elseif ($phase === 'ending_soon')
+                        Renews on {{ $renewsOn->format('D j M') }} — {{ $daysToRenewal <= 0 ? 'today' : ($daysToRenewal === 1 ? 'tomorrow' : 'in '.$daysToRenewal.' days') }}
+                    @else
+                        This period: {{ $activeSubscription->current_period_start->format('j M') }} – renews {{ $renewsOn->format('D j M') }}
+                    @endif
                 </div>
             </div>
-            <span class="pill success">{{ $totalCreditsRemaining }} credit{{ $totalCreditsRemaining === 1 ? '' : 's' }} left</span>
+            <span class="pill {{ $phase === 'grace' ? 'warn' : 'success' }}">{{ $totalCreditsRemaining }} credit{{ $totalCreditsRemaining === 1 ? '' : 's' }} left</span>
         </div>
+
+        @if ($phase === 'renewed')
+            <div style="display:flex;align-items:center;gap:8px;margin-top:14px;font-size:12.5px;color:var(--ink-700);">
+                <span class="pill teal">Renewed</span>
+                Your current credits stay usable until then.
+            </div>
+        @elseif ($activeSubscription->canRenew())
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-top:16px;padding:12px 14px;border-radius:12px;background:{{ $urgent ? 'var(--mw-coral-tint, #FCE1D3)' : 'var(--mw-teal-tint, #DCEDE8)' }};">
+                <div style="font-size:12.5px;color:var(--ink-700);max-width:420px;">
+                    @if ($phase === 'grace')
+                        Renew now to start a fresh period today with {{ $planIncluded }} credit{{ $planIncluded === 1 ? '' : 's' }}.
+                    @else
+                        Renew for {{ config('flutterwave.currency') }} {{ number_format($currentPlan->price, 0) }}. Your current credits stay until {{ $renewsOn->format('D j M') }}, then the new period starts with {{ $planIncluded }} credit{{ $planIncluded === 1 ? '' : 's' }}.
+                    @endif
+                </div>
+                <a href="{{ route('subscription.renew') }}" class="btn {{ $urgent ? 'coral' : 'ghost' }} sm" style="border-radius:999px;padding-left:20px;padding-right:20px;">
+                    {{ $urgent ? 'Renew now' : 'Renew early' }}
+                </a>
+            </div>
+        @endif
+
+        <p style="font-size:11.5px;color:var(--ink-300);margin:12px 0 0;">
+            Each period starts with {{ $planIncluded }} credit{{ $planIncluded === 1 ? '' : 's' }}. Unused credits don't carry over to the next period.
+        </p>
+    </div>
+@elseif ($endedSubscription)
+    <div class="card" style="margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+        <div>
+            <div class="section-title" style="margin-bottom:4px;">Your plan has ended</div>
+            <div style="font-size:12.5px;color:var(--ink-500);">
+                Your {{ $endedSubscription->subscriptionPlan->name }} plan ended on {{ $endedSubscription->updated_at->format('D j M') }}. You can pick it up again any time.
+            </div>
+        </div>
+        <a href="{{ route('subscription.checkout', $endedSubscription->subscriptionPlan) }}" class="btn coral sm" style="border-radius:999px;padding-left:20px;padding-right:20px;">
+            Restart {{ $endedSubscription->subscriptionPlan->name }}
+        </a>
     </div>
 @endif
 
@@ -27,8 +79,9 @@
 
     @if ($activeSubscription)
         <p style="font-size:12.5px;color:var(--ink-500);margin-bottom:16px;">
-            Switching replaces your current plan right away — it doesn't stack. Any unused credits carry
-            over as a bonus on your new plan; you'll see exactly how many before you confirm anything.
+            Switching replaces your current plan right away — it doesn't stack. Any unused credits (and a
+            renewal you've already paid for) carry over as a bonus on your new plan; you'll see exactly how
+            many before you confirm anything.
         </p>
     @else
         <p style="font-size:12.5px;color:var(--ink-500);margin-bottom:16px;">
@@ -77,8 +130,4 @@
     </div>
 </div>
 
-<p style="font-size:10.5px;color:var(--ink-300);margin-top:14px;">
-    Test placeholder: no real payment is charged yet for subscriptions. Real Flutterwave billing isn't wired
-    up yet.
-</p>
 @endsection

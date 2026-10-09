@@ -55,4 +55,24 @@ class JournalEntry extends Model
     {
         return $this->mood ? (self::MOODS[$this->mood] ?? null) : null;
     }
+
+    /**
+     * One point per day — that day's latest mood — for the last $days days, oldest
+     * first. Used by the progress pages (added 2026-10-03). Mood numbers only; never
+     * the journal text.
+     *
+     * @return \Illuminate\Support\Collection<int, array{at: \Illuminate\Support\Carbon, mood: int}>
+     */
+    public static function dailyMoodsFor(string $clientProfileId, int $days = 60): \Illuminate\Support\Collection
+    {
+        return static::where('client_profile_id', $clientProfileId)
+            ->where('kind', 'daily')
+            ->whereNotNull('mood')
+            ->where('created_at', '>=', now()->subDays($days - 1)->startOfDay())
+            ->orderBy('created_at')
+            ->get(['mood', 'created_at'])
+            ->groupBy(fn ($entry) => $entry->created_at->toDateString())
+            ->map(fn ($day, $date) => ['at' => \Illuminate\Support\Carbon::parse($date), 'mood' => (int) $day->last()->mood])
+            ->values();
+    }
 }

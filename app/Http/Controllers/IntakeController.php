@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ClientIntakeDetail;
 use App\Models\ClientSubscription;
 use App\Models\EmployerSeat;
 use App\Models\TherapySession;
+use App\Support\IntakeQuestions;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -56,6 +58,11 @@ class IntakeController extends Controller
             'phq9Items' => self::PHQ9_ITEMS,
             'gad7Items' => self::GAD7_ITEMS,
             'options' => self::OPTIONS,
+            // Richer intake (2026-10-09, roadmap 63): the "About you" sections an admin has on.
+            'aboutSections' => ClientIntakeDetail::tableReady() ? IntakeQuestions::enabled() : [],
+            // Pre-fill if they already answered from the About you page (reachable from My details).
+            'aboutDetail' => ClientIntakeDetail::for($profile->id),
+            'languageDefault' => $request->user()->preferred_language,
         ]);
     }
 
@@ -93,15 +100,53 @@ class IntakeController extends Controller
             'risk_level' => $riskLevel,
         ]);
 
+        // Save "About you" before anything else, so a crisis case still has it for the team.
+        // It is validated SEPARATELY from the screening answers: a bad About-you answer
+        // (e.g. a topic an admin renamed mid-intake) is dropped and logged, never sent back
+        // as an error — that would lose the 16 screening answers and could delay someone
+        // who needs the crisis screen. Wrapped so nothing here can stop the flow.
+        try {
+            self::saveAbout($request, $profile, self::validAbout($request, ClientIntakeDetail::for($profile->id)), 'intake');
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Intake "About you" answers could not be saved', ['client_profile_id' => $profile->id, 'error' => $e->getMessage()]);
+        }
+
         if ($riskLevel === 'crisis') {
-            \App\Models\CrisisFlag::create([
+            $flag = \App\Models\CrisisFlag::create([
                 'client_id' => $profile->id,
                 'intake_assessment_id' => $intake->id,
                 'reason' => 'PHQ-9 item 9 (self-harm ideation) was answered positively on intake.',
             ]);
 
+            // Phase 0 (2026-10-05): alert every admin straight away by email + SMS, the
+            // same way a check-in does (no therapist yet at intake). Wrapped so the client
+            // ALWAYS reaches the support screen.
+            try {
+                \App\Models\AuditLog::record($request, 'crisis_flag.raised', 'An intake assessment raised a crisis flag.', [
+                    'crisis_flag_id' => $flag->id,
+                    'intake_assessment_id' => $intake->id,
+                ]);
+
+                app(\App\Services\Notifier::class)->crisisAlert(
+                    null,
+                    \App\Models\User::where('role', 'admin')->get(),
+                    null,
+                    route('admin.clients.progress', $profile),
+                    'first assessment',
+                );
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::error('Intake crisis alert could not be sent', ['crisis_flag_id' => $flag->id, 'error' => $e->getMessage()]);
+            }
+
             return redirect()->route('intake.crisis');
         }
+
+        // Phase 0 (2026-10-05), from the CLIENT DRAFT: a supportive word after screening
+        // — never a diagnosis. Shown as the status message on the next screen.
+        $supportMessage = in_array($riskLevel, ['moderate', 'high'], true)
+            ? 'Thank you for completing your assessment. Your answers suggest you may be experiencing symptoms that could benefit from professional support — you\'re in the right place.'
+            : 'Thank you for completing your assessment. Your answers will help your therapist understand how you\'ve been feeling.';
+        $request->session()->flash('status', $supportMessage);
 
         // Not a crisis — move straight into the payment/routing flow the client asked for,
         // instead of just marking the intake as done. See SessionRequestController for what
@@ -111,10 +156,9 @@ class IntakeController extends Controller
         // credit: it's unmetered (nothing to decrement), so a client covered by an active
         // employer seat should never burn a subscription credit they also happen to hold.
         $employerSeat = EmployerSeat::activeFor($profile->id);
-        $activeSubscription = $employerSeat ? null : ClientSubscription::where('client_profile_id', $profile->id)
-            ->where('status', 'active')
-            ->where('sessions_remaining', '>', 0)
-            ->first();
+        // usableFor() (2026-10-01) also applies renewals/expiry first, so a plan whose
+        // period (and grace period) has run out can no longer be booked against.
+        $activeSubscription = $employerSeat ? null : ClientSubscription::usableFor($profile->id);
         $isCovered = $employerSeat || $activeSubscription;
 
         $session = TherapySession::create([
@@ -133,6 +177,82 @@ class IntakeController extends Controller
         }
 
         return redirect()->route('sessions.checkout', $session);
+    }
+
+    /**
+     * Store "About you" answers (shared with AboutYouController for existing clients).
+     * Mood right now also becomes a private daily mood entry; a preferred language fills
+     * the client's My details language when that's still empty.
+     */
+    /**
+     * About-you answers that pass validation. Fields that fail are dropped (and logged)
+     * instead of failing the whole intake.
+     */
+    private static function validAbout(Request $request, ?ClientIntakeDetail $existing): array
+    {
+        if (! ClientIntakeDetail::tableReady() || ! IntakeQuestions::anyOn()) {
+            return [];
+        }
+        $rules = IntakeQuestions::rules($existing);
+        $keys = array_values(array_unique(array_map(fn ($k) => explode('.', $k)[0], array_keys($rules))));
+        $data = $request->only($keys);
+
+        $v = \Illuminate\Support\Facades\Validator::make($data, $rules);
+        if ($v->fails()) {
+            $bad = array_values(array_unique(array_map(fn ($k) => explode('.', $k)[0], array_keys($v->failed()))));
+            \Illuminate\Support\Facades\Log::warning('Intake "About you" answers partly dropped', ['fields' => $bad]);
+            $data = array_diff_key($data, array_flip($bad));
+            $v = \Illuminate\Support\Facades\Validator::make($data, $rules);
+            if ($v->fails()) {
+                return [];
+            }
+        }
+
+        return $v->validated();
+    }
+
+    public static function saveAbout(Request $request, $profile, array $validated, string $source): ?ClientIntakeDetail
+    {
+        if (! ClientIntakeDetail::tableReady() || ! IntakeQuestions::anyOn()) {
+            return null;
+        }
+
+        $existing = ClientIntakeDetail::for($profile->id);
+        $attrs = IntakeQuestions::attributesFrom($validated);
+        // Keep earlier answers for sections an admin has switched off since.
+        if ($existing) {
+            foreach (IntakeQuestions::FIELDS as $section => $fields) {
+                if (! IntakeQuestions::isOn($section)) {
+                    foreach ($fields as $f) {
+                        $attrs[$f] = $existing->{$f};
+                    }
+                }
+            }
+        }
+        $previousMood = $existing?->mood_now;
+        $detail = ClientIntakeDetail::updateOrCreate(
+            ['client_profile_id' => $profile->id],
+            $attrs + ['source' => $source, 'completed_at' => now(), 'dismissed_at' => null],
+        );
+        ClientIntakeDetail::forget($profile->id);
+
+        // Only log a mood entry when it's new information (re-saving the About you page
+        // with the same pre-filled mood shouldn't add another entry).
+        if ($attrs['mood_now'] && $attrs['mood_now'] !== $previousMood) {
+            \App\Models\JournalEntry::create([
+                'client_profile_id' => $profile->id,
+                'kind' => 'daily',
+                'mood' => $attrs['mood_now'],
+                'shared_with_therapist' => false,
+            ]);
+        }
+
+        $user = $request->user();
+        if ($attrs['pref_language'] && blank($user->preferred_language)) {
+            $user->forceFill(['preferred_language' => mb_substr($attrs['pref_language'], 0, 60)])->save();
+        }
+
+        return $detail;
     }
 
     public function crisis(): View

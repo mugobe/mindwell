@@ -20,16 +20,32 @@ class ClosedSessionController extends Controller
      */
     public function index(Request $request): View
     {
+        // 2026-10-08 redesign: outcome tabs with counts + a name search.
+        $q = trim((string) $request->query('q', ''));
+        $outcome = array_key_exists((string) $request->query('outcome'), TherapySession::CLOSURE_OUTCOMES)
+            ? (string) $request->query('outcome') : null;
+
         $sessions = TherapySession::where('status', 'completed')
             ->with(['clientProfile.user', 'therapistProfile.user'])
-            ->when($request->filled('outcome'), fn ($q) => $q->where('closure_outcome', $request->string('outcome')))
+            ->when($outcome, fn ($query) => $query->where('closure_outcome', $outcome))
+            ->when($q !== '', fn ($query) => $query->where(fn ($w) => $w
+                ->whereHas('clientProfile.user', fn ($u) => $u->where('name', 'like', '%'.$q.'%'))
+                ->orWhereHas('therapistProfile.user', fn ($u) => $u->where('name', 'like', '%'.$q.'%'))))
             ->latest('closed_at')
             ->paginate(20)
             ->withQueryString();
 
+        $counts = TherapySession::where('status', 'completed')
+            ->selectRaw('closure_outcome, count(*) as n')
+            ->groupBy('closure_outcome')
+            ->pluck('n', 'closure_outcome');
+
         return view('admin.closed-sessions.index', [
             'sessions' => $sessions,
             'outcomes' => TherapySession::CLOSURE_OUTCOMES,
+            'outcome' => $outcome,
+            'counts' => $counts,
+            'q' => $q,
         ]);
     }
 

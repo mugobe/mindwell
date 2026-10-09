@@ -2,12 +2,30 @@
 @section('title', 'Session Routing')
 @section('content')
 
-<div class="dash-head">
-    <h1>Waiting for a specialist</h1>
-    <span class="pill {{ $waiting->count() > 0 ? 'warn' : 'success' }}">{{ $waiting->count() }} waiting</span>
+{{-- 2026-10-08 redesign: page kit header, jump tabs, headed cards. --}}
+<div class="mw-page-head">
+    <div>
+        <h1>Session routing</h1>
+        <div class="sub">Place clients waiting in the lobby, and confirm bookings before clients see them as booked.</div>
+    </div>
+    <div class="actions">
+        <a href="{{ route('admin.calendar') }}" class="btn ghost sm">Calendar</a>
+        <a href="{{ route('admin.venues.index') }}" class="btn ghost sm">Venues</a>
+    </div>
 </div>
 
-<div class="card" style="padding:0;">
+<nav class="mw-tabs" aria-label="Sections">
+    <a href="#lobby" class="on">Lobby <span class="n">{{ $waiting->count() }}</span></a>
+    <a href="#approve">To approve <span class="n">{{ $pendingApprovals->count() }}</span></a>
+    <a href="#inperson">In person <span class="n">{{ $upcomingInPerson->count() }}</span></a>
+    <a href="#followups">Recent follow-ups <span class="n">{{ $recentFollowUps->count() }}</span></a>
+</nav>
+
+<div class="card" style="padding:0;scroll-margin-top:80px;" id="lobby">
+    <div class="mw-card-head">
+        <h2>Waiting for a specialist</h2>
+        <span class="pill {{ $waiting->count() > 0 ? 'danger' : 'success' }}">{{ $waiting->count() }} waiting</span>
+    </div>
     <table class="mw-table">
         <thead>
             <tr>
@@ -18,11 +36,19 @@
             </tr>
         </thead>
         <tbody>
+            @php \App\Models\ClientIntakeDetail::preload($waiting->pluck('client_profile_id')->merge($pendingApprovals->pluck('client_profile_id'))); @endphp
             @forelse ($waiting as $session)
             <tr>
                 <td style="padding-left:16px;">
-                    {{ $session->clientProfile?->user?->name ?? 'Unknown client' }}
-                    <div style="font-size:10.5px;color:var(--ink-300);">{{ $session->clientProfile?->user?->email }}</div>
+                    @include('partials.person', ['name' => $session->clientProfile?->user?->name, 'fallback' => 'Unknown client', 'sub' => $session->clientProfile?->user?->email])
+                    {{-- Richer intake (2026-10-09): what brings them + preferences, shown for information (matching does not use them). --}}
+                    @php $mwAb = \App\Models\ClientIntakeDetail::for($session->client_profile_id); @endphp
+                    @if ($mwAb && ($mwAb->concernLine(70) || $mwAb->preferenceLines()))
+                        <div style="font-size:11.5px;margin:5px 0 0 42px;max-width:300px;line-height:1.45;">
+                            @if ($mwAb->concernLine(70))<div style="color:#8a4326;">{{ $mwAb->concernLine(70) }}</div>@endif
+                            @if ($mwAb->preferenceLines())<div style="color:var(--ink-500);">{{ implode(' · ', $mwAb->preferenceLines()) }}</div>@endif
+                        </div>
+                    @endif
                 </td>
                 <td>
                     @if ($session->intakeAssessment)
@@ -63,11 +89,11 @@
     here immediately moves them off their waiting screen.
 </p>
 
-<div class="dash-head" style="margin-top:28px;">
-    <div class="section-title" style="margin:0;">Awaiting your approval</div>
-    <span class="pill {{ $pendingApprovals->count() > 0 ? 'warn' : 'success' }}">{{ $pendingApprovals->count() }} pending</span>
-</div>
-<div class="card" style="padding:0;">
+<div class="card" style="padding:0;margin-top:22px;scroll-margin-top:80px;" id="approve">
+    <div class="mw-card-head">
+        <h2>Awaiting your approval</h2>
+        <span class="pill {{ $pendingApprovals->count() > 0 ? 'warn' : 'success' }}">{{ $pendingApprovals->count() }} pending</span>
+    </div>
     <table class="mw-table">
         <thead>
             <tr>
@@ -81,19 +107,37 @@
         <tbody>
             @forelse ($pendingApprovals as $session)
             <tr>
-                <td style="padding-left:16px;">{{ $session->clientProfile?->user?->name ?? 'Unknown client' }}</td>
-                <td>{{ $session->therapistProfile?->user?->name ?? '—' }}</td>
+                <td style="padding-left:16px;">
+                    @include('partials.person', ['name' => $session->clientProfile?->user?->name, 'fallback' => 'Unknown client'])
+                    @php $mwAb = \App\Models\ClientIntakeDetail::for($session->client_profile_id); @endphp
+                    @if ($mwAb && ($mwAb->concernLine(70) || $mwAb->preferenceLines()))
+                        <div style="font-size:11.5px;margin:5px 0 0 42px;max-width:300px;line-height:1.45;">
+                            @if ($mwAb->concernLine(70))<div style="color:#8a4326;">{{ $mwAb->concernLine(70) }}</div>@endif
+                            @if ($mwAb->preferenceLines())<div style="color:var(--ink-500);">{{ implode(' · ', $mwAb->preferenceLines()) }}</div>@endif
+                        </div>
+                    @endif
+                </td>
+                <td>@include('partials.person', ['name' => $session->therapistProfile?->user?->name, 'size' => 28])</td>
                 <td>{{ $session->scheduled_at?->format('M j, Y g:i A') ?? '—' }}</td>
                 <td>
                     <span class="pill teal">
                         {{ $session->routing_method === 'therapist_scheduled' ? 'Therapist-scheduled follow-up' : 'Client booked directly' }}
                     </span>
+                    @if ($session->isInPerson())
+                        <span class="pill success" style="margin-top:4px;">In person</span>
+                    @endif
                 </td>
                 <td style="padding-right:16px;">
-                    <div style="display:flex;gap:8px;">
-                        <form method="POST" action="{{ route('admin.session-routing.approve', $session) }}">
+                    <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;">
+                        <form method="POST" action="{{ route('admin.session-routing.approve', $session) }}" style="{{ $session->isInPerson() ? 'display:flex;flex-direction:column;gap:6px;min-width:240px;' : '' }}">
                             @csrf
-                            <button type="submit" class="btn primary sm">Approve</button>
+                            @if ($session->isInPerson())
+                                {{-- In-person (2026-10-07): say where before confirming. --}}
+                                @include('admin.session-routing._location-fields', ['session' => $session, 'venues' => $venues])
+                                <button type="submit" class="btn primary sm">Approve &amp; send location</button>
+                            @else
+                                <button type="submit" class="btn primary sm">Approve</button>
+                            @endif
                         </form>
                         <form method="POST" action="{{ route('admin.session-routing.decline', $session) }}" onsubmit="return confirm('Decline this session? The client will need to book again.');">
                             @csrf
@@ -108,14 +152,60 @@
         </tbody>
     </table>
 </div>
+@if ($errors->any())
+    <div class="mw-alert danger" style="margin-top:10px;">{{ $errors->first() }}</div>
+@endif
 <p style="font-size:11px;color:var(--ink-300);margin-top:12px;">
     A client only sees this as confirmed once you approve it here — whether they booked a therapist directly
     themselves or their therapist scheduled a follow-up while closing a previous session. Declining cancels it
     and refunds a session credit if one was used.
 </p>
 
-<div class="section-title" style="margin-top:28px;">Recently approved follow-ups</div>
-<div class="card" style="padding:0;">
+{{-- In-person (2026-10-07): where confirmed in-person sessions happen; change it here. --}}
+<div class="card" style="padding:0;margin-top:22px;scroll-margin-top:80px;" id="inperson">
+    <div class="mw-card-head">
+        <h2>Upcoming in-person sessions</h2>
+        <a href="{{ route('admin.venues.index') }}">Manage venues →</a>
+    </div>
+    <table class="mw-table">
+        <thead>
+            <tr>
+                <th style="padding-left:16px;">Client</th>
+                <th>Therapist</th>
+                <th>When</th>
+                <th>Where</th>
+                <th style="padding-right:16px;"></th>
+            </tr>
+        </thead>
+        <tbody>
+            @forelse ($upcomingInPerson as $session)
+            <tr>
+                <td style="padding-left:16px;">@include('partials.person', ['name' => $session->clientProfile?->user?->name, 'fallback' => 'Unknown client'])</td>
+                <td>@include('partials.person', ['name' => $session->therapistProfile?->user?->name, 'size' => 28])</td>
+                <td style="white-space:nowrap;">{{ $session->scheduled_at?->format('M j, Y g:i A') ?? '—' }}</td>
+                <td style="font-size:12.5px;max-width:260px;">{{ $session->locationText() ?? 'Not set yet' }}</td>
+                <td style="padding-right:16px;text-align:right;position:relative;">
+                    <details style="display:inline-block;text-align:left;">
+                        <summary class="btn ghost sm" style="list-style:none;cursor:pointer;">Change</summary>
+                        <form method="POST" action="{{ route('admin.session-routing.location', $session) }}" class="card" style="position:absolute;right:0;top:100%;z-index:10;width:300px;margin-top:6px;padding:14px;display:flex;flex-direction:column;gap:8px;box-shadow:0 10px 30px rgba(0,0,0,.15);">
+                            @csrf
+                            @include('admin.session-routing._location-fields', ['session' => $session, 'venues' => $venues])
+                            <button type="submit" class="btn primary sm">Save &amp; tell them</button>
+                        </form>
+                    </details>
+                </td>
+            </tr>
+            @empty
+            <tr><td colspan="5" style="padding:16px;color:var(--ink-500);">No in-person sessions coming up.</td></tr>
+            @endforelse
+        </tbody>
+    </table>
+</div>
+
+<div class="card" style="padding:0;margin-top:22px;scroll-margin-top:80px;" id="followups">
+    <div class="mw-card-head">
+        <h2>Recently approved follow-ups</h2>
+    </div>
     <table class="mw-table">
         <thead>
             <tr>
@@ -128,8 +218,8 @@
         <tbody>
             @forelse ($recentFollowUps as $session)
             <tr>
-                <td style="padding-left:16px;">{{ $session->clientProfile?->user?->name ?? 'Unknown client' }}</td>
-                <td>{{ $session->therapistProfile?->user?->name ?? '—' }}</td>
+                <td style="padding-left:16px;">@include('partials.person', ['name' => $session->clientProfile?->user?->name, 'fallback' => 'Unknown client'])</td>
+                <td>@include('partials.person', ['name' => $session->therapistProfile?->user?->name, 'size' => 28])</td>
                 <td>{{ $session->scheduled_at?->format('M j, Y g:i A') ?? '—' }}</td>
                 <td style="padding-right:16px;"><span class="pill teal">Scheduled</span></td>
             </tr>

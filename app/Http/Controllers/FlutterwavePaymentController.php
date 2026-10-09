@@ -6,6 +6,8 @@ use App\Models\AuditLog;
 use App\Models\PaymentTransaction;
 use App\Models\TherapySession;
 use App\Services\FlutterwaveClient;
+use App\Services\Receipts;
+use App\Services\Vouchers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -267,6 +269,28 @@ class FlutterwavePaymentController extends Controller
     }
 
     /**
+     * A voucher covered the whole price (2026-10-07): there's nothing to charge, so the
+     * Mobile Money step is skipped and the payment is completed straight away — same
+     * finalize() path as a real payment (session/plan/renewal, receipt, redemption).
+     */
+    public function completeWithoutCharge(PaymentTransaction $transaction, Request $request): RedirectResponse
+    {
+        abort_unless((float) $transaction->amount <= 0 && $transaction->voucher_id, 422);
+
+        $result = $this->finalize($transaction, [
+            'status' => 'succeeded',
+            'amount' => 0,
+            'currency' => $transaction->currency,
+            'reference' => $transaction->tx_ref,
+            'voucher_free' => true,
+        ], $request);
+
+        $redirect = redirect()->route($result['route'], $result['params']);
+
+        return $redirect->with('status', $result['status_message'] ?? 'Your voucher covered the full price — nothing to pay.');
+    }
+
+    /**
      * Best-effort normalization of whatever status string Flutterwave's v4 API
      * returns — 'succeeded' and 'successful' are both accepted as success since the
      * exact spelling wasn't confirmed with full certainty against the real sandbox
@@ -317,9 +341,22 @@ class FlutterwavePaymentController extends Controller
             'processed_at' => now(),
         ]);
 
-        return $transaction->purpose === 'session'
-            ? $this->finalizeSession($transaction, $request)
-            : app(SubscriptionController::class)->finalizeSubscription($transaction, $request);
+        if ($transaction->purpose === 'session') {
+            $result = $this->finalizeSession($transaction, $request);
+        } else {
+            // Renewal of an existing plan (2026-10-01) vs. buying / switching to a plan.
+            $result = $transaction->isRenewal()
+                ? app(SubscriptionController::class)->finalizeRenewal($transaction, $request)
+                : app(SubscriptionController::class)->finalizeSubscription($transaction, $request);
+        }
+
+        // Receipt number + receipt email (2026-10-02). Never throws.
+        // Vouchers (2026-10-07): a use only counts once the payment has gone through.
+        app(Vouchers::class)->recordRedemption($transaction);
+
+        app(Receipts::class)->issue($transaction);
+
+        return $result;
     }
 
     private function finalizeSession(PaymentTransaction $transaction, ?Request $request): array
@@ -353,8 +390,12 @@ class FlutterwavePaymentController extends Controller
 
     private function redirectToCheckout(PaymentTransaction $transaction): RedirectResponse
     {
-        return $transaction->purpose === 'session'
-            ? redirect()->route('sessions.checkout', $transaction->therapy_session_id)
+        if ($transaction->purpose === 'session') {
+            return redirect()->route('sessions.checkout', $transaction->therapy_session_id);
+        }
+
+        return $transaction->isRenewal()
+            ? redirect()->route('subscription.renew')
             : redirect()->route('subscription.checkout', $transaction->subscription_plan_id);
     }
 

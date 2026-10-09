@@ -22,6 +22,15 @@ return Application::configure(basePath: dirname(__DIR__))
             'role' => \App\Http\Middleware\EnsureUserHasRole::class,
             'admin' => \App\Http\Middleware\EnsureUserIsAdmin::class,
         ]);
+
+        // Phase 0 launch-safety (2026-10-05):
+        // - Coolify puts a proxy in front of the app, so trust it — otherwise Laravel
+        //   thinks every request is plain http (wrong links, secure cookies not sent).
+        // - Flutterwave's server-to-server webhook can't send a CSRF token.
+        // - Security headers on every response.
+        $middleware->trustProxies(at: '*');
+        $middleware->validateCsrfTokens(except: ['webhooks/flutterwave']);
+        $middleware->append(\App\Http\Middleware\SecurityHeaders::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

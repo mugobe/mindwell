@@ -54,6 +54,13 @@ class VideoRoomController extends Controller
 
         $backUrl = $role === 'therapist' ? route('therapist.sessions.index') : route('sessions.history');
 
+        // In-person sessions (2026-10-07) have no video room.
+        if ($therapySession->isInPerson()) {
+            return $role === 'client' && $therapySession->status === 'scheduled'
+                ? redirect()->route('sessions.connected', $therapySession)
+                : redirect($backUrl)->with('status', 'That is an in-person session, so there is no video room for it.');
+        }
+
         if ($therapySession->status !== 'scheduled') {
             return redirect($backUrl)->with('error', $therapySession->status === 'completed'
                 ? 'That session has already been closed, so its video room is no longer open.'
@@ -102,6 +109,9 @@ class VideoRoomController extends Controller
                 'presenceUrl' => route('sessions.room.presence', $therapySession),
                 'notesUrl' => route('sessions.room.notes', $therapySession),
                 'journalUrl' => route('journal.index'),
+                // Session feedback on the thank-you screen (2026-10-04).
+                'rateUrl' => $role === 'client' ? route('sessions.rate.store', $therapySession) : null,
+                'canRate' => $role === 'client' && ! $therapySession->rating()->exists(),
                 // Planned end of the session, for the gentle "40 min left" timer.
                 'endsAtMs' => $access['starts_at']->copy()->addMinutes($therapySession->duration_minutes ?: 70)->getTimestamp() * 1000,
                 'csrf' => csrf_token(),
@@ -130,6 +140,8 @@ class VideoRoomController extends Controller
         $role = $this->participantRole($user, $therapySession);
         abort_unless($role !== null, 403);
 
+        abort_if($therapySession->isInPerson(), 404);
+
         $livekit = app(LiveKitToken::class);
         if (! $livekit->isConfigured()) {
             return response()->json(['message' => "Video isn't set up on this server yet."], 503);
@@ -154,6 +166,12 @@ class VideoRoomController extends Controller
         AuditLog::record($request, 'session.video_joined', "{$user->name} joined the video room ({$role}).", [
             'therapy_session_id' => $therapySession->id,
         ]);
+
+        // Added 2026-10-04: remember that the client really joined, so only people who
+        // took part are asked to rate the session (SessionRating).
+        if ($role === 'client' && ! $therapySession->client_joined_at) {
+            $therapySession->forceFill(['client_joined_at' => now()])->saveQuietly();
+        }
 
         // Added 2026-09-30: when the therapist opens the room and the client isn't in it,
         // tell the client by email + SMS (once per session) — the in-page chime only

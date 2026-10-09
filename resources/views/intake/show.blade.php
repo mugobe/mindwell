@@ -7,7 +7,7 @@
     <div class="mw-wizard-topbar">
         <button type="button" id="mw-back" class="mw-wizard-back" style="visibility:hidden;">&larr; Previous question</button>
         <div class="mw-wizard-progress" id="mw-progress">
-            @for ($i = 0; $i < count($phq9Items) + count($gad7Items); $i++)
+            @for ($i = 0; $i < count($aboutSections) + count($phq9Items) + count($gad7Items); $i++)
                 <span class="mw-progress-seg"></span>
             @endfor
         </div>
@@ -16,20 +16,32 @@
     <div class="mw-wizard-intro">
         <h1 style="font-size:19px;font-weight:800;margin-bottom:6px;color:var(--ink-900);">A few questions before we match you</h1>
         <p style="font-size:12.5px;color:var(--ink-500);line-height:1.6;">
-            These are the same standardized screeners (PHQ-9 and GAD-7) licensed therapists use everywhere. There are
-            no wrong answers — this just helps us find the right therapist for you and flag if you need support
-            right away. Answer based on <b>the last 2 weeks</b>.
+            @if (count($aboutSections))
+                {{-- Richer intake (2026-10-09, roadmap 63). --}}
+                First a little about you — every one of these can be skipped. Then 16 short questions (PHQ-9 and GAD-7),
+                the same screeners licensed therapists use everywhere; answer those based on <b>the last 2 weeks</b>.
+                There are no wrong answers. Only your therapist and the Mindwell care team see what you share.
+            @else
+                These are the same standardized screeners (PHQ-9 and GAD-7) licensed therapists use everywhere. There are
+                no wrong answers — this just helps us find the right therapist for you and flag if you need support
+                right away. Answer based on <b>the last 2 weeks</b>.
+            @endif
         </p>
     </div>
 
     @if ($errors->any())
-        <div class="mw-alert danger">Please answer every question before continuing.</div>
+        <div class="mw-alert danger">{{ $errors->has('phq_1') || collect($errors->keys())->contains(fn ($k) => str_starts_with($k, 'phq_') || str_starts_with($k, 'gad_')) ? 'Please answer every screening question before continuing.' : $errors->first() }}</div>
     @endif
 
     <form method="POST" action="{{ route('intake.store') }}" id="mw-intake-form">
         @csrf
 
+        <div id="mw-skipped">
+            @foreach ((array) old('skipped', []) as $mwSk)<input type="hidden" name="skipped[]" value="{{ $mwSk }}" data-skip="{{ $mwSk }}">@endforeach
+        </div>
         <div class="mw-wizard-stage">
+            @include('intake._about', ['mode' => 'wizard', 'sectionsOn' => $aboutSections, 'detail' => $aboutDetail ?? null, 'languageDefault' => $languageDefault ?? null])
+
             @foreach ($phq9Items as $num => $text)
                 <div class="mw-step" data-eyebrow="PHQ-9 · over the last 2 weeks">
                     <div class="mw-step-eyebrow">Over the last 2 weeks, how often have you been bothered by…</div>
@@ -164,6 +176,36 @@
     }
 
     backBtn.addEventListener('click', goBack);
+
+    // "About you" steps (2026-10-09): Continue / Skip instead of auto-advance.
+    var skippedBox = document.getElementById('mw-skipped');
+    function setSkipped(section, on) {
+        var existing = skippedBox.querySelector('[data-skip="' + section + '"]');
+        if (on && ! existing) {
+            var h = document.createElement('input');
+            h.type = 'hidden'; h.name = 'skipped[]'; h.value = section; h.setAttribute('data-skip', section);
+            skippedBox.appendChild(h);
+        } else if (! on && existing) {
+            existing.remove();
+        }
+    }
+    document.querySelectorAll('.mw-about-step').forEach(function (step) {
+        var section = step.getAttribute('data-section');
+        step.querySelector('.mw-about-next').addEventListener('click', function () {
+            setSkipped(section, false);
+            goNext();
+        });
+        step.querySelector('.mw-about-skip').addEventListener('click', function () {
+            step.querySelectorAll('input[type=checkbox], input[type=radio]').forEach(function (i) { i.checked = false; });
+            step.querySelectorAll('textarea, input[type=text], input:not([type])').forEach(function (i) { i.value = ''; });
+            setSkipped(section, true);
+            goNext();
+        });
+        // Enter in a one-line box shouldn't submit the whole intake.
+        step.querySelectorAll('input:not([type]), input[type=text]').forEach(function (i) {
+            i.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); setSkipped(section, false); goNext(); } });
+        });
+    });
 
     steps.forEach(function (step) {
         step.querySelectorAll('.mw-radio-input').forEach(function (input) {

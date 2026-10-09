@@ -18,6 +18,7 @@ class EmployerAccount extends Model
         'contract_start',
         'contract_renewal_date',
         'status',
+        'expiry_warning_sent_at',
     ];
 
     protected function casts(): array
@@ -26,6 +27,7 @@ class EmployerAccount extends Model
             'contract_start' => 'date',
             'contract_renewal_date' => 'date',
             'seats_purchased' => 'integer',
+            'expiry_warning_sent_at' => 'datetime',
         ];
     }
 
@@ -53,5 +55,17 @@ class EmployerAccount extends Model
         }
 
         return ! $this->contract_renewal_date || $this->contract_renewal_date->isFuture();
+    }
+
+    /** How many days before the renewal date admins are warned (2026-10-06, roadmap 27). */
+    public const EXPIRY_WARNING_DAYS = 30;
+
+    /** Active, with a renewal date coming up within the warning window. */
+    public function isEndingSoon(): bool
+    {
+        return $this->status === 'active'
+            && $this->contract_renewal_date
+            && $this->contract_renewal_date->isFuture()
+            && $this->contract_renewal_date->lte(now()->addDays(self::EXPIRY_WARNING_DAYS));
     }
 }

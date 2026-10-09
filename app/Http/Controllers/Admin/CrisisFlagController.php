@@ -11,16 +11,25 @@ use Illuminate\View\View;
 
 class CrisisFlagController extends Controller
 {
-    public function index(): View
+    public const STATUS_TABS = ['open' => 'Open', 'acknowledged' => 'Being followed up', 'resolved' => 'Resolved'];
+
+    public function index(Request $request): View
     {
+        // 2026-10-08 redesign: status tabs with counts. Default "All" keeps open first.
+        $status = array_key_exists((string) $request->query('status'), self::STATUS_TABS) ? (string) $request->query('status') : null;
+
         $flags = CrisisFlag::with(['client.user', 'intakeAssessment', 'acknowledgedBy'])
+            ->when($status, fn ($query) => $query->where('status', $status))
             ->orderByRaw("FIELD(status,'open','acknowledged','resolved')")
             ->orderByDesc('created_at')
-            ->paginate(25);
+            ->paginate(25)
+            ->withQueryString();
 
-        $openCount = CrisisFlag::where('status', 'open')->count();
+        $counts = CrisisFlag::selectRaw('status, count(*) as n')->groupBy('status')->pluck('n', 'status');
+        $openCount = (int) ($counts['open'] ?? 0);
+        $tabs = self::STATUS_TABS;
 
-        return view('admin.crisis.index', compact('flags', 'openCount'));
+        return view('admin.crisis.index', compact('flags', 'openCount', 'counts', 'tabs', 'status'));
     }
 
     public function acknowledge(Request $request, CrisisFlag $flag): RedirectResponse

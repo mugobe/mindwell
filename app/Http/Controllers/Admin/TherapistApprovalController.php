@@ -17,8 +17,10 @@ class TherapistApprovalController extends Controller
     {
         $pending = TherapistProfile::with('user')->where('credentials_verified', false)->get();
         $verified = TherapistProfile::with('user')->where('credentials_verified', true)->get();
+        // Licence changes therapists have asked for from their profile (2026-10-06).
+        $licenseChanges = TherapistProfile::with('user')->whereNotNull('license_change_requested_at')->get();
 
-        return view('admin.therapists.index', compact('pending', 'verified'));
+        return view('admin.therapists.index', compact('pending', 'verified', 'licenseChanges'));
     }
 
     public function approve(Request $request, TherapistProfile $therapist): RedirectResponse
@@ -92,5 +94,50 @@ class TherapistApprovalController extends Controller
         return redirect()
             ->route('admin.therapists.index')
             ->with('status', $validated['name'].' was added. Share their email and the password you set so they can log in.');
+    }
+
+    /** Apply a licence change the therapist requested from their profile (2026-10-06). */
+    public function approveLicense(Request $request, TherapistProfile $therapist): RedirectResponse
+    {
+        abort_unless($therapist->license_change_requested_at, 404);
+
+        $old = $therapist->license_number.' ('.$therapist->license_state.')';
+        $therapist->forceFill([
+            'license_number' => $therapist->pending_license_number,
+            'license_state' => $therapist->pending_license_state,
+            'pending_license_number' => null,
+            'pending_license_state' => null,
+            'license_change_requested_at' => null,
+        ])->save();
+
+        AuditLog::record($request, 'therapist.license_change_approved', 'Approved '.$therapist->user->name.'\'s licence change from '.$old.' to '.$therapist->license_number.' ('.$therapist->license_state.').', ['therapist_profile_id' => $therapist->id]);
+
+        return back()->with('status', $therapist->user->name.'\'s licence change has been approved.');
+    }
+
+    public function rejectLicense(Request $request, TherapistProfile $therapist): RedirectResponse
+    {
+        abort_unless($therapist->license_change_requested_at, 404);
+
+        $therapist->forceFill([
+            'pending_license_number' => null,
+            'pending_license_state' => null,
+            'license_change_requested_at' => null,
+        ])->save();
+
+        AuditLog::record($request, 'therapist.license_change_rejected', 'Rejected '.$therapist->user->name.'\'s licence change; the current licence stays.', ['therapist_profile_id' => $therapist->id]);
+
+        return back()->with('status', $therapist->user->name.'\'s licence change was rejected. Their current licence stays in place.');
+    }
+
+    /** Switch in-person bookings on/off for a therapist (2026-10-07, roadmap 68). */
+    public function toggleInPerson(Request $request, TherapistProfile $therapist): RedirectResponse
+    {
+        $on = ! (bool) $therapist->offers_in_person;
+        $therapist->forceFill(['offers_in_person' => $on])->save();
+
+        AuditLog::record($request, 'therapist.in_person_toggled', ($on ? 'Switched on' : 'Switched off').' in-person bookings for '.$therapist->user->name.'.', ['therapist_profile_id' => $therapist->id]);
+
+        return back()->with('status', $therapist->user->name.($on ? ' can now be booked in person.' : ' can no longer be booked in person (sessions already booked stay as they are).'));
     }
 }

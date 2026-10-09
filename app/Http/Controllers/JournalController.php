@@ -74,6 +74,11 @@ class JournalController extends Controller
             'shared_with_therapist' => (bool) ($validated['shared_with_therapist'] ?? false),
         ]);
 
+        // Phase 0 (2026-10-05): the dashboard's "How are you feeling today?" posts here too.
+        if ($request->input('return') === 'dashboard') {
+            return redirect()->route('dashboard')->with('status', 'Thanks for checking in — saved to your journal.');
+        }
+
         return redirect()->route('journal.index')->with('status', 'Saved to your journal.');
     }
 

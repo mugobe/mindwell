@@ -13,7 +13,10 @@
     </p>
 
     <div class="card" style="background:var(--ink-050,#f7f7f8);padding:16px;margin-bottom:{{ $activeSubscription ? '14px' : '22px' }};">
-        <div style="font-size:28px;font-weight:800;color:var(--ink-900);">{{ config('flutterwave.currency') }} {{ number_format($plan->price, 0) }}</div>
+        @if ($quote['applied'])
+            <div style="font-size:14px;color:var(--ink-300);text-decoration:line-through;">{{ config('flutterwave.currency') }} {{ number_format($quote['original'], 0) }}</div>
+        @endif
+        <div style="font-size:28px;font-weight:800;color:var(--ink-900);">{{ config('flutterwave.currency') }} {{ number_format($quote['total'], 0) }}</div>
         <div style="font-size:11.5px;color:var(--ink-300);margin-top:4px;">
             per {{ $plan->billing_interval === 'monthly' ? 'month' : 'week' }}
         </div>
@@ -25,7 +28,7 @@
                 Switching from {{ $activeSubscription->subscriptionPlan->name }}
             </div>
             <p style="font-size:12.5px;color:var(--ink-500);margin:0;">
-                You have {{ $proration['remaining_sessions'] }} unused credit{{ $proration['remaining_sessions'] === 1 ? '' : 's' }}
+                You have {{ $proration['remaining_sessions'] }} unused credit{{ $proration['remaining_sessions'] === 1 ? '' : 's' }}{{ ! empty($proration['includes_prepaid']) ? ' plus a renewal you\'ve already paid for' : '' }}
                 (worth about {{ config('flutterwave.currency') }} {{ number_format($proration['remaining_value'], 0) }}). Switching converts that into
                 <strong style="color:var(--ink-900);">{{ $proration['bonus_credits'] }} bonus credit{{ $proration['bonus_credits'] === 1 ? '' : 's' }}</strong>
                 on top of {{ $plan->name }}'s usual {{ $plan->sessions_included }}, so you'll start with
@@ -34,8 +37,16 @@
         </div>
     @endif
 
+    @include('partials.voucher-box', ['quote' => $quote])
+
     <form method="POST" action="{{ route('subscription.subscribe', $plan) }}" style="text-align:left;">
         @csrf
+        @if ($quote['applied'])
+            <input type="hidden" name="voucher" value="{{ $quote['code'] }}">
+        @endif
+        @if ($quote['applied'] && $quote['total'] <= 0)
+            <button type="submit" class="btn coral block" style="border-radius:999px;">Confirm — covered by your voucher</button>
+        @else
         <div style="margin-bottom:14px;">
             <label class="mw-label" for="network">Mobile Money network</label>
             <select class="mw-field" id="network" name="network" required>
@@ -50,6 +61,7 @@
             @error('phone_number')<div class="mw-alert danger" style="margin-top:6px;">{{ $message }}</div>@enderror
         </div>
         <button type="submit" class="btn coral block" style="border-radius:999px;">{{ $activeSubscription ? 'Switch with Mobile Money' : 'Subscribe with Mobile Money' }}</button>
+        @endif
     </form>
     <a href="{{ route('subscription.index') }}" style="display:inline-block;margin-top:10px;font-size:12px;color:var(--ink-500);">Cancel</a>
 

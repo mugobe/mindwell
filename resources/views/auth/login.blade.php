@@ -28,7 +28,11 @@
                     <input class="mw-field" type="email" id="email" name="email" value="{{ old('email') }}" required autofocus>
                 </div>
                 <div>
-                    <label class="mw-label" for="password">Password</label>
+                    <div style="display:flex;justify-content:space-between;align-items:baseline;">
+                        <label class="mw-label" for="password">Password</label>
+                        {{-- Added 2026-10-04 — see PasswordResetController. --}}
+                        <a href="{{ route('password.request') }}" style="font-size:12px;color:var(--teal-700);font-weight:600;text-decoration:none;">Forgot password?</a>
+                    </div>
                     <input class="mw-field" type="password" id="password" name="password" required>
                 </div>
                 <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-500);">
@@ -41,6 +45,7 @@
                 Don't have an account?
                 <a href="{{ route('register') }}" style="color:var(--teal-700);font-weight:700;text-decoration:none;">Sign up</a>
             </div>
+            @include('partials.urgent-help-link')
         </div>
     </div>
 </div>

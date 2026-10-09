@@ -44,6 +44,12 @@
             <td>
                 <div class="label">Closed out</div>
                 <div class="value">{{ $session->closed_at?->format('M j, Y g:i A') ?? '—' }}</div>
+                @if ($session->session_number)
+                    <div style="font-size:10.5px;color:#888;">Session #{{ $session->session_number }} for this client</div>
+                @endif
+                @if ($session->isInPerson())
+                    <div style="font-size:10.5px;color:#888;">In person{{ $session->locationText() ? ' · '.$session->locationText() : '' }}</div>
+                @endif
             </td>
         </tr>
     </table>
@@ -80,6 +86,14 @@
             <div class="label">Plan / next steps</div>
             <p>{{ $session->plan_notes ?: '—' }}</p>
         </div>
+        @foreach (['interventions_used' => 'Interventions used', 'homework' => 'Homework / activities given', 'goals_progress' => 'Progress toward goals'] as $mwField => $mwLabel)
+            @if ($session->{$mwField})
+                <div class="section">
+                    <div class="label">{{ $mwLabel }}</div>
+                    <p>{{ $session->{$mwField} }}</p>
+                </div>
+            @endif
+        @endforeach
     @else
         <div class="section">
             <div class="label">Report</div>

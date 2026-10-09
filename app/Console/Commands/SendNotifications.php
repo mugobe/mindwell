@@ -5,6 +5,10 @@ namespace App\Console\Commands;
 use App\Models\ChatConversation;
 use App\Models\TherapySession;
 use App\Services\Notifier;
+use App\Services\RatingReminders;
+use App\Services\CheckInReminders;
+use App\Services\EmployerContractWarnings;
+use App\Services\SubscriptionRenewals;
 use Illuminate\Console\Command;
 
 /**
@@ -16,6 +20,8 @@ use Illuminate\Console\Command;
  * Locally, either keep `php artisan schedule:work` running in a second terminal, or
  * just run `php artisan mindwell:notify` by hand when testing.
  *
+ * Also runs the subscription renewal checks (App\Services\SubscriptionRenewals).
+ *
  * Each reminder/alert is stamped (…_sent_at / …_notified_at) so re-running this is
  * always safe — nothing goes out twice.
  */
@@ -25,7 +31,7 @@ class SendNotifications extends Command
 
     protected $description = 'Send appointment reminders and new-message emails that are due';
 
-    public function handle(Notifier $notifier): int
+    public function handle(Notifier $notifier, SubscriptionRenewals $renewals, CheckInReminders $checkIns, RatingReminders $ratings, EmployerContractWarnings $employers): int
     {
         $now = now();
         $sent24 = $sent1 = $sentMsg = 0;
@@ -100,6 +106,21 @@ class SendNotifications extends Command
             });
 
         $this->info("Day-before reminders: {$sent24} · one-hour reminders: {$sent1} · new-message emails: {$sentMsg}");
+
+        // ---- Subscription renewals (added 2026-10-01): roll over / expire plans and send
+        // renewal reminders. Lives here so it needs no extra scheduler line.
+        $r = $renewals->run();
+        $this->info("Plans rolled over: {$r['rolled']} · expired: {$r['expired']} · renewal reminders: "
+            .($r['reminders'] + $r['due'] + $r['ended']));
+
+        // ---- Progress check-in nudges (added 2026-10-03).
+        $this->info('Check-in reminders: '.$checkIns->run());
+
+        // ---- "How was your appointment?" emails (added 2026-10-04).
+        $this->info('Session feedback emails: '.$ratings->run());
+
+        // ---- Employer contracts ending within 30 days (added 2026-10-06).
+        $this->info('Employer contract warnings: '.$employers->run());
 
         return self::SUCCESS;
     }

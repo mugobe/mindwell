@@ -21,12 +21,29 @@
     @endphp
     <div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:16px;">
         <div style="display:flex;align-items:center;gap:14px;">
-            <div class="avatar" style="background:{{ $mwAvatarTint }};color:var(--teal-600,#2f6f66);">{{ collect(explode(' ', $therapist->user->name))->map(fn($p) => $p[0] ?? '')->join('') }}</div>
+            {{-- Photo from the therapist's own profile (2026-10-06), or initials. --}}
+            @if ($therapist->photo_path)
+                @include('partials.therapist-avatar', ['therapist' => $therapist, 'size' => 52])
+            @else
+                <div class="avatar" style="background:{{ $mwAvatarTint }};color:var(--teal-600,#2f6f66);">{{ collect(explode(' ', $therapist->user->name))->map(fn($p) => $p[0] ?? '')->join('') }}</div>
+            @endif
             <div>
                 <div style="font-weight:700;color:var(--ink-900);">{{ $therapist->user->name }}</div>
+                @if ($therapist->professional_title || $therapist->languages)
+                    <div style="font-size:12px;color:var(--ink-700);">{{ collect([$therapist->professional_title, $therapist->languages ? 'Speaks '.$therapist->languages : null])->filter()->join(' · ') }}</div>
+                @endif
                 <div style="font-size:12px;color:var(--ink-500);display:flex;align-items:center;gap:5px;">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;flex-shrink:0;"><path d="M4 4h9l7 7-9 9-7-7V4z"/><circle cx="9" cy="9" r="1.3" fill="currentColor" stroke="none"/></svg>
                     {{ $therapist->specialties ? implode(', ', $therapist->specialties) : 'General practice' }}
+                </div>
+                @if ($therapist->bio)
+                    <div style="font-size:12.5px;color:var(--ink-500);margin-top:4px;max-width:520px;">{{ \Illuminate\Support\Str::limit($therapist->bio, 140) }}</div>
+                @endif
+                <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">
+                    <span class="pill teal">Online</span>
+                    @if ($therapist->offers_in_person)
+                        <span class="pill success">In person too</span>
+                    @endif
                 </div>
             </div>
         </div>
@@ -34,7 +51,7 @@
             @if ($therapist->hourly_rate)
                 <div style="font-size:12px;color:var(--ink-500);margin-bottom:6px;display:flex;align-items:center;justify-content:flex-end;gap:5px;">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="width:12px;height:12px;flex-shrink:0;"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v9M9.3 9.8c0-1.3 1.2-2.3 2.7-2.3s2.6.8 2.6 2c0 2.7-5.3 1.4-5.3 4.1 0 1.2 1.2 2.2 2.7 2.2s2.7-1 2.7-2.2"/></svg>
-                    ${{ $therapist->hourly_rate }}/session
+                    {{ config('flutterwave.currency', 'UGX') }} {{ number_format((float) $therapist->hourly_rate, 0) }}/session
                 </div>
             @endif
             <a href="{{ route('therapists.book', $therapist) }}" class="btn primary sm" style="display:inline-flex;align-items:center;gap:6px;border-radius:999px;">

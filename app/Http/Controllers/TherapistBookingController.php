@@ -9,6 +9,7 @@ use App\Models\TherapySession;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 /**
@@ -38,34 +39,13 @@ class TherapistBookingController extends Controller
     {
         abort_unless($therapist->credentials_verified, 404);
 
-        $now = Carbon::now();
-        $slots = collect();
-
-        for ($daysAhead = 0; $daysAhead < 7; $daysAhead++) {
-            $date = $now->copy()->addDays($daysAhead);
-            $dayName = strtolower($date->format('l'));
-
-            foreach ($therapist->availabilitySlots()->where('day_of_week', $dayName)->where('is_recurring', true)->get() as $slot) {
-                $candidate = $date->copy()->setTimeFromTimeString((string) $slot->start_time);
-
-                if ($candidate->isPast()) {
-                    continue;
-                }
-
-                $taken = TherapySession::where('therapist_profile_id', $therapist->id)
-                    ->where('status', 'scheduled')
-                    ->where('scheduled_at', $candidate)
-                    ->exists();
-
-                if (! $taken) {
-                    $slots->push($candidate);
-                }
-            }
-        }
+        // 2026-10-08: shared with reschedule + follow-ups; also skips times already
+        // waiting for approval and the therapist's approved time off.
+        $slots = app(\App\Services\OpenSlots::class)->for($therapist, 7);
 
         return view('therapists.book', [
             'therapist' => $therapist,
-            'slots' => $slots->sort()->values(),
+            'slots' => $slots,
         ]);
     }
 
@@ -75,17 +55,51 @@ class TherapistBookingController extends Controller
 
         $validated = $request->validate([
             'scheduled_at' => ['required', 'date', 'after:now'],
+            // In-person (2026-10-07): only for therapists admin has switched it on for.
+            'session_mode' => ['nullable', 'in:'.implode(',', array_keys(TherapySession::MODES))],
         ]);
 
+        // 2026-10-08: the time must still be free (someone may have just taken it, or the
+        // therapist's time off was approved meanwhile).
+        $wanted = Carbon::parse($validated['scheduled_at']);
+
+        $mode = $validated['session_mode'] ?? TherapySession::MODE_VIDEO;
+        if ($mode === TherapySession::MODE_IN_PERSON && ! $therapist->offers_in_person) {
+            return back()->with('error', "{$therapist->user->name} isn't seeing clients in person right now. Please book an online session.");
+        }
+
         $profile = $request->user()->clientProfile ?? $request->user()->clientProfile()->create([]);
+
+        // Lock this therapist's row while checking + creating, so two clients pressing
+        // "Book" for the same time at the same moment can't both get it.
+        $session = DB::transaction(function () use ($therapist, $wanted, $profile, $validated, $mode) {
+            TherapistProfile::whereKey($therapist->getKey())->lockForUpdate()->first();
+
+            if (! app(\App\Services\OpenSlots::class)->for($therapist, 7)->contains(fn ($slot) => $slot->equalTo($wanted))) {
+                return null;
+            }
+
+            return $this->createBooking($therapist, $profile, $validated, $mode);
+        });
+
+        if (! $session) {
+            return redirect()->route('therapists.book', $therapist)->with('error', 'Sorry, that time was just taken. Please pick another.');
+        }
+
+        return $session->status === 'pending_approval'
+            ? redirect()->route('sessions.pending-approval', $session)
+            : redirect()->route('sessions.checkout', $session);
+    }
+
+    private function createBooking(TherapistProfile $therapist, $profile, array $validated, string $mode): TherapySession
+    {
 
         // Employer seat coverage (2026-09-27) is checked FIRST, ahead of a subscription
         // credit — see the same note in IntakeController::store().
         $employerSeat = EmployerSeat::activeFor($profile->id);
-        $activeSubscription = $employerSeat ? null : ClientSubscription::where('client_profile_id', $profile->id)
-            ->where('status', 'active')
-            ->where('sessions_remaining', '>', 0)
-            ->first();
+        // usableFor() (2026-10-01) also applies renewals/expiry first, so a plan whose
+        // period (and grace period) has run out can no longer be booked against.
+        $activeSubscription = $employerSeat ? null : ClientSubscription::usableFor($profile->id);
         $isCovered = $employerSeat || $activeSubscription;
 
         // 2026-09-26 (third round of client testing feedback): a direct booking used to
@@ -103,14 +117,13 @@ class TherapistBookingController extends Controller
             'routing_method' => 'self_booked',
             'scheduled_at' => $validated['scheduled_at'],
             'duration_minutes' => config('mindwell.session_duration_minutes'),
+            'session_mode' => $mode,
         ]);
 
         if ($isCovered) {
             $activeSubscription?->decrement('sessions_remaining');
-
-            return redirect()->route('sessions.pending-approval', $session);
         }
 
-        return redirect()->route('sessions.checkout', $session);
+        return $session;
     }
 }

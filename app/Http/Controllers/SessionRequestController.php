@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\PaymentTransaction;
+use App\Models\Voucher;
 use App\Models\TherapySession;
 use App\Services\FlutterwaveClient;
 use App\Services\SessionRouter;
+use App\Services\Vouchers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -63,8 +65,12 @@ class SessionRequestController extends Controller
         }
 
         return view('sessions.checkout', [
-            'session' => $therapySession,
-            'price' => config('mindwell.one_off_session_price'),
+            'session' => $therapySession->load('therapistProfile.user'),
+            'price' => $therapySession->listPrice(),
+            // Vouchers (2026-10-07): ?voucher=CODE previews the discount before paying.
+            'quote' => app(Vouchers::class)->quote(
+                $request->query('voucher'), Voucher::FOR_SESSION, $therapySession->listPrice(), $therapySession->clientProfile,
+                ['therapy_session_id' => $therapySession->id]),
         ]);
     }
 
@@ -87,25 +93,61 @@ class SessionRequestController extends Controller
             return redirect()->route($this->routeForStatus($therapySession), $therapySession);
         }
 
-        $validated = $request->validate([
+        // Vouchers (2026-10-07): re-checked here, never trusted from the preview — and
+        // again under a lock on the voucher when the payment is created.
+        $vouchers = app(Vouchers::class);
+        $code = $request->input('voucher');
+        $price = $therapySession->listPrice();
+        $profile = $therapySession->clientProfile;
+        $target = ['therapy_session_id' => $therapySession->id];
+
+        $preview = $vouchers->quote($code, Voucher::FOR_SESSION, $price, $profile, $target);
+        if ($request->filled('voucher') && ! $preview['ok']) {
+            return redirect()->route('sessions.checkout', $therapySession)->with('error', $preview['error']);
+        }
+
+        // Fully covered by a voucher: nothing to charge, so no Mobile Money step.
+        $free = $preview['applied'] && $preview['total'] <= 0;
+
+        $validated = $free ? [] : $request->validate([
             'network' => ['required', 'in:MTN,AIRTEL'],
             'phone_number' => ['required', 'regex:/^(0|256)?7[0-9]{8}$/'],
         ], [
             'phone_number.regex' => 'Enter a valid Ugandan mobile number, e.g. 0772123456.',
         ]);
 
-        $amount = (float) config('mindwell.one_off_session_price');
         $currency = config('flutterwave.currency');
 
-        $transaction = PaymentTransaction::create([
-            'client_profile_id' => $therapySession->client_profile_id,
-            'purpose' => 'session',
-            'therapy_session_id' => $therapySession->id,
-            'tx_ref' => 'MW-SESSION-'.strtoupper(Str::random(10)),
-            'status' => 'pending',
-            'amount' => $amount,
-            'currency' => $currency,
-        ]);
+        $result = $vouchers->withLock($code, function () use ($vouchers, $code, $price, $profile, $target, $free, $validated, $therapySession, $currency, $request) {
+            $quote = $vouchers->quote($code, Voucher::FOR_SESSION, $price, $profile, $target);
+            if (($request->filled('voucher') && ! $quote['ok']) || (($quote['applied'] && $quote['total'] <= 0) !== $free)) {
+                return ['error' => $quote['error'] ?? 'That voucher has just changed — please check the price and try again.'];
+            }
+
+            return ['transaction' => PaymentTransaction::create(array_merge([
+                'client_profile_id' => $therapySession->client_profile_id,
+                'purpose' => 'session',
+                'therapy_session_id' => $therapySession->id,
+                'tx_ref' => ($free ? 'MW-VOUCHER-' : 'MW-SESSION-').strtoupper(Str::random(10)),
+                'status' => 'pending',
+                'amount' => $quote['total'],
+                'currency' => $currency,
+                'method_label' => $free
+                    ? 'Voucher '.$quote['voucher']->code
+                    : PaymentTransaction::methodLabelFor($validated['network'], $validated['phone_number']),
+            ], Vouchers::transactionFields($quote)))];
+        });
+
+        if (isset($result['error'])) {
+            return redirect()->route('sessions.checkout', $therapySession)->with('error', $result['error']);
+        }
+
+        $transaction = $result['transaction'];
+        $amount = (float) $transaction->amount;
+
+        if ($free) {
+            return app(FlutterwavePaymentController::class)->completeWithoutCharge($transaction, $request);
+        }
 
         try {
             $charge = app(FlutterwaveClient::class)->initiateMobileMoneyCharge(

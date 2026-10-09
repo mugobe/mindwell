@@ -50,7 +50,12 @@
                             —
                         @endif
                     </td>
-                    <td><span class="pill {{ $pillClass }}">{{ $pillLabel }}</span></td>
+                    <td>
+                        <span class="pill {{ $pillClass }}">{{ $pillLabel }}</span>
+                        @if ($session->isInPerson())
+                            <span class="pill success">In person</span>
+                        @endif
+                    </td>
                     <td style="padding-right:16px;text-align:right;">
                         @switch($session->status)
                             @case('pending_payment')
@@ -64,6 +69,9 @@
                                 @break
                             @case('scheduled')
                                 <a href="{{ route('sessions.connected', $session) }}" class="btn ghost sm" style="border-radius:999px;">View details</a>
+                                @if ($session->scheduled_at?->isFuture())
+                                    <a href="{{ route('sessions.change', $session) }}" class="btn ghost sm" style="border-radius:999px;">Change or cancel</a>
+                                @endif
                                 @break
                         @endswitch
                     </td>

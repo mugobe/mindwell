@@ -29,6 +29,12 @@ class TherapistRegistrationController extends Controller
             'license_state' => ['required', 'string', 'max:255'],
             'specialties' => ['nullable', 'string', 'max:500'],
             'hourly_rate' => ['nullable', 'numeric', 'min:0'],
+            // Phase 0 (2026-10-05): consent is recorded for therapists too.
+            'accept_terms' => ['accepted'],
+            'accept_privacy' => ['accepted'],
+        ], [
+            'accept_terms.accepted' => 'Please agree to the Terms of Use.',
+            'accept_privacy.accepted' => 'Please agree to the Privacy Policy.',
         ]);
 
         // Turn "Anxiety, CBT, Relationships" into a clean array, or null if left blank.
@@ -45,7 +51,7 @@ class TherapistRegistrationController extends Controller
                 'password' => $validated['password'],
                 'phone' => \App\Support\UgandaPhone::normalize($validated['phone'] ?? null),
                 'role' => 'therapist',
-            ]);
+            ] + User::consentAttributes(includeEmergency: false));
 
             TherapistProfile::create([
                 'user_id' => $user->id,

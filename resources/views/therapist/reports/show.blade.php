@@ -2,20 +2,25 @@
 @section('title', 'Session Report')
 @section('content')
 
-<div class="dash-head">
-    <h1>Session report</h1>
-    <div style="display:flex;gap:8px;">
+{{-- 2026-10-08 redesign (round 3): page head with the client's bubble. --}}
+@php $mwC = $session->clientProfile?->user; @endphp
+<div class="mw-page-head">
+    <div style="display:flex;align-items:center;gap:14px;">
+        @include('partials.avatar', ['name' => $mwC?->name ?? 'Client', 'size' => 46])
+        <div>
+            <h1>{{ $mwC?->name ?? 'Unknown client' }}{{ $session->session_number ? ' · session '.$session->session_number : '' }}</h1>
+            <div class="sub">Session report · {{ $session->scheduled_at?->format('l, j M Y') ?? '—' }}{{ $session->isInPerson() ? ' · in person' : ' · video' }}</div>
+        </div>
+    </div>
+    <div class="actions">
+        <a href="{{ route('therapist.reports.index') }}" class="btn ghost sm">All notes</a>
+        @if ($session->client_profile_id)<a href="{{ route('therapist.clients.show', $session->client_profile_id) }}" class="btn ghost sm">Client file</a>@endif
         <a href="{{ route('therapist.reports.pdf', $session) }}" class="btn primary sm">Download PDF</a>
-        <a href="{{ route('therapist.reports.index') }}" class="btn ghost sm">Back to reports</a>
     </div>
 </div>
 
-<div class="card" style="max-width:640px;">
+<div class="card" style="max-width:720px;">
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px;font-size:13px;">
-        <div>
-            <div class="mw-label">Client</div>
-            <div style="color:var(--ink-900);font-weight:600;">{{ $session->clientProfile?->user?->name ?? 'Unknown client' }}</div>
-        </div>
         <div>
             <div class="mw-label">Session was</div>
             <div style="color:var(--ink-900);">{{ $session->scheduled_at?->format('M j, Y g:i A') ?? '—' }}</div>
@@ -23,6 +28,12 @@
         <div>
             <div class="mw-label">Closed out</div>
             <div style="color:var(--ink-900);">{{ $session->closed_at?->format('M j, Y g:i A') ?? '—' }}</div>
+            @if ($session->session_number)
+                <div style="font-size:11.5px;color:var(--ink-500);margin-top:2px;">Session #{{ $session->session_number }} for this client</div>
+            @endif
+            @if ($session->isInPerson())
+                <div style="font-size:11.5px;color:var(--ink-500);margin-top:2px;">In person{{ $session->locationText() ? ' · '.$session->locationText() : '' }}</div>
+            @endif
         </div>
     </div>
 
@@ -64,6 +75,14 @@
                 <div class="mw-label">Plan / next steps</div>
                 <p style="font-size:13.5px;color:var(--ink-900);white-space:pre-wrap;line-height:1.6;margin-top:4px;">{{ $session->plan_notes ?: '—' }}</p>
             </div>
+            @foreach (['interventions_used' => 'Interventions used', 'homework' => 'Homework / activities given', 'goals_progress' => 'Progress toward goals'] as $mwField => $mwLabel)
+                @if ($session->{$mwField})
+                    <div>
+                        <div class="mw-label">{{ $mwLabel }}</div>
+                        <p style="font-size:13.5px;color:var(--ink-900);white-space:pre-wrap;line-height:1.6;margin-top:4px;">{{ $session->{$mwField} }}</p>
+                    </div>
+                @endif
+            @endforeach
         </div>
     @else
         <div class="mw-label">Report</div>
@@ -72,7 +91,7 @@
     @endif
 </div>
 
-<p style="font-size:11px;color:var(--ink-300);margin-top:14px;max-width:640px;">
+<p style="font-size:11px;color:var(--ink-300);margin-top:14px;max-width:720px;">
     This is exactly what you submitted when you closed the session out — it isn't shown to the client anywhere
     in the portal.
 </p>

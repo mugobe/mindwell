@@ -15,7 +15,13 @@ class SubscriptionPlanController extends Controller
     {
         $plans = SubscriptionPlan::orderBy('price')->get();
 
-        return view('admin.plans.index', compact('plans'));
+        // 2026-10-08 redesign: how many clients are on each plan right now.
+        $activeCounts = \App\Models\ClientSubscription::where('status', 'active')
+            ->selectRaw('subscription_plan_id, count(*) as n')
+            ->groupBy('subscription_plan_id')
+            ->pluck('n', 'subscription_plan_id');
+
+        return view('admin.plans.index', compact('plans', 'activeCounts'));
     }
 
     public function create(): View

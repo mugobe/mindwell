@@ -6,7 +6,9 @@ use App\Models\AuditLog;
 use App\Models\ClientSubscription;
 use App\Models\PaymentTransaction;
 use App\Models\SubscriptionPlan;
+use App\Models\Voucher;
 use App\Services\FlutterwaveClient;
+use App\Services\Vouchers;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -36,12 +38,23 @@ use Throwable;
  * here means converting the value of unused credits (price / sessions_included on the
  * OLD plan) into an equivalent number of bonus credits on the NEW plan, so nothing is
  * silently lost even though no real money moves. See prorationFor() below.
+ *
+ * Renewals (added 2026-10-01): renewCheckout()/renew() let a client pay for the next
+ * period of the plan they're on — early (it takes effect on the renewal date) or during
+ * the 3-day grace period (it starts that day). finalizeRenewal() applies it once
+ * Flutterwave confirms. The period rules live on App\Models\ClientSubscription.
  */
 class SubscriptionController extends Controller
 {
     public function index(Request $request): View
     {
         $profile = $request->user()->clientProfile;
+
+        if ($profile) {
+            // Apply anything due (roll over a renewed plan / expire a lapsed one) first,
+            // so this page never shows a plan as active after it has really ended.
+            ClientSubscription::syncFor($profile->id);
+        }
 
         $activeSubscriptions = $profile
             ? ClientSubscription::where('client_profile_id', $profile->id)
@@ -50,13 +63,27 @@ class SubscriptionController extends Controller
                 ->get()
             : collect();
 
+        $activeSubscription = $activeSubscriptions->sortByDesc('current_period_start')->first();
+
+        // No plan right now: if one ended recently, offer to pick it up again.
+        $endedSubscription = (! $activeSubscription && $profile)
+            ? ClientSubscription::where('client_profile_id', $profile->id)
+                ->where('status', 'expired')
+                ->where('updated_at', '>=', now()->subDays(60))
+                ->with('subscriptionPlan')
+                ->latest('updated_at')
+                ->first()
+            : null;
+
         $plans = SubscriptionPlan::orderBy('price')->get();
 
         return view('subscriptions.index', [
             // Only ever expect one, but see the class docblock on legacy admin-granted
             // duplicates — pick the most recently started one to display as "current."
-            'activeSubscription' => $activeSubscriptions->sortByDesc('current_period_start')->first(),
+            'activeSubscription' => $activeSubscription,
+            'phase' => $activeSubscription?->phase(),
             'totalCreditsRemaining' => $activeSubscriptions->sum('sessions_remaining'),
+            'endedSubscription' => $endedSubscription?->subscriptionPlan ? $endedSubscription : null,
             'plans' => $plans,
         ]);
     }
@@ -64,6 +91,10 @@ class SubscriptionController extends Controller
     public function checkout(Request $request, SubscriptionPlan $plan): View
     {
         $profile = $request->user()->clientProfile;
+
+        if ($profile) {
+            ClientSubscription::syncFor($profile->id);
+        }
 
         $activeSubscriptions = $profile
             ? ClientSubscription::where('client_profile_id', $profile->id)
@@ -76,6 +107,9 @@ class SubscriptionController extends Controller
             'plan' => $plan,
             'activeSubscription' => $activeSubscriptions->sortByDesc('current_period_start')->first(),
             'proration' => $activeSubscriptions->isNotEmpty() ? $this->prorationFor($activeSubscriptions, $plan) : null,
+            // Vouchers (2026-10-07): ?voucher=CODE previews the discount.
+            'quote' => app(Vouchers::class)->quote($request->query('voucher'), Voucher::FOR_PLAN, (float) $plan->price, $profile,
+                ['subscription_plan_id' => $plan->id, 'client_subscription_id' => null]),
         ]);
     }
 
@@ -92,30 +126,163 @@ class SubscriptionController extends Controller
         $user = $request->user();
         $profile = $user->clientProfile ?? $user->clientProfile()->create([]);
 
-        $validated = $request->validate([
+        return $this->payWithVoucher($request, Voucher::FOR_PLAN, (float) $plan->price, $profile, [
+            'client_profile_id' => $profile->id,
+            'purpose' => 'subscription',
+            'subscription_plan_id' => $plan->id,
+            'status' => 'pending',
+            'currency' => config('flutterwave.currency'),
+        ], 'MW-SUB-', ['subscription_plan_id' => $plan->id, 'client_subscription_id' => null],
+            fn () => redirect()->route('subscription.checkout', $plan));
+    }
+
+    /**
+     * Renewal checkout (added 2026-10-01): pay for the next period of the plan the client
+     * is on now. Only offered while the plan is active and not already renewed.
+     */
+    public function renewCheckout(Request $request): View|RedirectResponse
+    {
+        $subscription = $this->renewableSubscription($request);
+
+        if (! $subscription instanceof ClientSubscription) {
+            return $subscription;
+        }
+
+        $phase = $subscription->phase();
+
+        return view('subscriptions.renew', [
+            'subscription' => $subscription,
+            'plan' => $subscription->subscriptionPlan,
+            'phase' => $phase,
+            'inGrace' => $phase === ClientSubscription::PHASE_GRACE,
+            'newPeriodStart' => $phase === ClientSubscription::PHASE_GRACE ? today() : $subscription->current_period_end,
+            'quote' => app(Vouchers::class)->quote($request->query('voucher'), Voucher::FOR_RENEWAL,
+                (float) $subscription->subscriptionPlan->price, $subscription->clientProfile,
+                ['client_subscription_id' => $subscription->id]),
+        ]);
+    }
+
+    public function renew(Request $request): RedirectResponse
+    {
+        $subscription = $this->renewableSubscription($request);
+
+        if (! $subscription instanceof ClientSubscription) {
+            return $subscription;
+        }
+
+        $plan = $subscription->subscriptionPlan;
+
+        return $this->payWithVoucher($request, Voucher::FOR_RENEWAL, (float) $plan->price, $subscription->clientProfile, [
+            'client_profile_id' => $subscription->client_profile_id,
+            'purpose' => 'subscription',
+            'subscription_plan_id' => $plan->id,
+            'client_subscription_id' => $subscription->id,
+            'status' => 'pending',
+            'currency' => config('flutterwave.currency'),
+        ], 'MW-REN-', ['client_subscription_id' => $subscription->id],
+            fn () => redirect()->route('subscription.renew'));
+    }
+
+    /** The client's current plan if it can be renewed, otherwise a redirect explaining why not. */
+    private function renewableSubscription(Request $request): ClientSubscription|RedirectResponse
+    {
+        $profile = $request->user()->clientProfile;
+
+        if ($profile) {
+            ClientSubscription::syncFor($profile->id);
+        }
+
+        $subscription = $profile
+            ? ClientSubscription::where('client_profile_id', $profile->id)
+                ->where('status', 'active')
+                ->with('subscriptionPlan')
+                ->orderByDesc('current_period_start')
+                ->first()
+            : null;
+
+        if (! $subscription) {
+            return redirect()->route('subscription.index')
+                ->with('error', "You don't have an active plan to renew. You can choose a plan below.");
+        }
+
+        if ($subscription->renewal_paid_at) {
+            return redirect()->route('subscription.index')
+                ->with('status', 'Your plan is already renewed — the next period starts on '.$subscription->current_period_end->format('D j M').'.');
+        }
+
+        if (! $subscription->canRenew()) {
+            return redirect()->route('subscription.index')
+                ->with('error', "This plan can't be renewed. Please choose a plan below.");
+        }
+
+        return $subscription;
+    }
+
+    /**
+     * Vouchers (2026-10-07): checks the code (never trusting the preview), then creates
+     * the payment while holding a lock on the voucher so its last use can't be taken
+     * twice. A voucher that covers the whole price skips Mobile Money entirely.
+     */
+    private function payWithVoucher(Request $request, string $voucherPurpose, float $price, $profile, array $base, string $prefix, array $target, \Closure $back): RedirectResponse
+    {
+        $vouchers = app(Vouchers::class);
+        $code = $request->input('voucher');
+
+        $preview = $vouchers->quote($code, $voucherPurpose, $price, $profile, $target);
+        if ($request->filled('voucher') && ! $preview['ok']) {
+            return $back()->with('error', $preview['error']);
+        }
+
+        $free = $preview['applied'] && $preview['total'] <= 0;
+        $validated = $free ? [] : $this->validateMobileMoney($request);
+
+        $result = $vouchers->withLock($code, function () use ($vouchers, $code, $voucherPurpose, $price, $profile, $target, $free, $validated, $base, $prefix, $request) {
+            $quote = $vouchers->quote($code, $voucherPurpose, $price, $profile, $target);
+            if (($request->filled('voucher') && ! $quote['ok']) || (($quote['applied'] && $quote['total'] <= 0) !== $free)) {
+                return ['error' => $quote['error'] ?? 'That voucher has just changed — please check the price and try again.'];
+            }
+
+            return ['transaction' => PaymentTransaction::create(array_merge($base, [
+                'amount' => $quote['total'],
+                'tx_ref' => ($free ? 'MW-VOUCHER-' : $prefix).strtoupper(Str::random(10)),
+                'method_label' => $free
+                    ? 'Voucher '.$quote['voucher']->code
+                    : PaymentTransaction::methodLabelFor($validated['network'], $validated['phone_number']),
+            ], Vouchers::transactionFields($quote)))];
+        });
+
+        if (isset($result['error'])) {
+            return $back()->with('error', $result['error']);
+        }
+
+        if ($free) {
+            return app(FlutterwavePaymentController::class)->completeWithoutCharge($result['transaction'], $request);
+        }
+
+        return $this->startMobileMoneyCharge($result['transaction'], $validated, $request->user(), $back);
+    }
+
+    private function validateMobileMoney(Request $request): array
+    {
+        return $request->validate([
             'network' => ['required', 'in:MTN,AIRTEL'],
             'phone_number' => ['required', 'regex:/^(0|256)?7[0-9]{8}$/'],
         ], [
             'phone_number.regex' => 'Enter a valid Ugandan mobile number, e.g. 0772123456.',
         ]);
+    }
 
-        $currency = config('flutterwave.currency');
-
-        $transaction = PaymentTransaction::create([
-            'client_profile_id' => $profile->id,
-            'purpose' => 'subscription',
-            'subscription_plan_id' => $plan->id,
-            'tx_ref' => 'MW-SUB-'.strtoupper(Str::random(10)),
-            'status' => 'pending',
-            'amount' => $plan->price,
-            'currency' => $currency,
-        ]);
-
+    /**
+     * Shared by subscribe() and renew(): asks Flutterwave to start the Mobile Money
+     * charge for $transaction and sends the client on to approve it.
+     */
+    private function startMobileMoneyCharge(PaymentTransaction $transaction, array $validated, $user, \Closure $onFail): RedirectResponse
+    {
         try {
             $charge = app(FlutterwaveClient::class)->initiateMobileMoneyCharge(
                 reference: $transaction->tx_ref,
-                amount: (float) $plan->price,
-                currency: $currency,
+                amount: (float) $transaction->amount,
+                currency: $transaction->currency,
                 network: $validated['network'],
                 phoneNumber: $this->normalizePhoneNumber($validated['phone_number']),
                 customer: [
@@ -126,8 +293,7 @@ class SubscriptionController extends Controller
         } catch (Throwable $e) {
             $transaction->update(['status' => 'failed']);
 
-            return redirect()->route('subscription.checkout', $plan)
-                ->with('error', "Payment couldn't be started: {$e->getMessage()}");
+            return $onFail()->with('error', "Payment couldn't be started: {$e->getMessage()}");
         }
 
         $transaction->update([
@@ -180,6 +346,10 @@ class SubscriptionController extends Controller
         $profile = $transaction->clientProfile;
         $plan = $transaction->subscriptionPlan;
 
+        // Expire anything that has really ended first, so it isn't counted as unused
+        // value in the proration below.
+        ClientSubscription::syncFor($profile->id);
+
         $activeSubscriptions = ClientSubscription::where('client_profile_id', $profile->id)
             ->where('status', 'active')
             ->with('subscriptionPlan')
@@ -194,15 +364,13 @@ class SubscriptionController extends Controller
                 ->update(['status' => 'canceled']);
         }
 
-        $periodEnd = $plan->billing_interval === 'monthly' ? now()->addMonth() : now()->addWeek();
-
         $subscription = ClientSubscription::create([
             'client_profile_id' => $profile->id,
             'subscription_plan_id' => $plan->id,
             'status' => 'active',
             'sessions_remaining' => $plan->sessions_included + $bonusCredits,
-            'current_period_start' => now(),
-            'current_period_end' => $periodEnd,
+            'current_period_start' => today(),
+            'current_period_end' => $plan->periodEndFrom(today()),
         ]);
 
         $userName = $profile->user?->name ?? 'A client';
@@ -227,6 +395,74 @@ class SubscriptionController extends Controller
     }
 
     /**
+     * A renewal payment was confirmed (added 2026-10-01). Called only from
+     * FlutterwavePaymentController::finalize(), for a PaymentTransaction with a
+     * client_subscription_id.
+     *
+     *  - Renewed before the renewal date → mark the next period as paid; it starts (and
+     *    the credits reset) on the renewal date. Current credits stay usable until then.
+     *  - Renewed during the grace period → the new period starts today.
+     *  - The plan ended or was replaced while they were paying → they still paid for a
+     *    period of this plan, so start a fresh subscription to it (finalizeSubscription()).
+     *
+     * @return array{route: string, params: array, status_message: ?string}
+     */
+    public function finalizeRenewal(PaymentTransaction $transaction, ?Request $request): array
+    {
+        $subscription = $transaction->clientSubscription()->with('subscriptionPlan')->first();
+        $subscription?->sync();
+
+        if (! $subscription || $subscription->status !== 'active' || ! $subscription->subscriptionPlan) {
+            return $this->finalizeSubscription($transaction, $request);
+        }
+
+        $plan = $subscription->subscriptionPlan;
+        $userName = $subscription->clientProfile?->user?->name ?? 'A client';
+
+        if ($subscription->renewal_paid_at) {
+            // Two renewal payments for the same period — shouldn't happen (renew() refuses
+            // once one has gone through), but if two were started at once, flag it for a
+            // refund rather than silently swallowing the money.
+            AuditLog::record($request, 'client_subscription.duplicate_renewal',
+                "{$userName} paid twice to renew \"{$plan->name}\" — the second payment needs a refund.", [
+                    'client_subscription_id' => $subscription->id,
+                    'payment_transaction_id' => $transaction->id,
+                ]);
+
+            return [
+                'route' => 'subscription.index',
+                'params' => [],
+                'status_message' => 'Your plan was already renewed, so this second payment will be refunded. Our team has been notified.',
+            ];
+        }
+
+        if ($subscription->phase() === ClientSubscription::PHASE_GRACE) {
+            $subscription->rollOver(today());
+
+            $message = "Your {$plan->name} plan is renewed. You have {$subscription->sessions_remaining} "
+                .($subscription->sessions_remaining === 1 ? 'credit' : 'credits')
+                .' until '.$subscription->current_period_end->format('D j M').'.';
+        } else {
+            $subscription->forceFill(['renewal_paid_at' => now()])->save();
+
+            $message = "Your {$plan->name} plan is renewed. Your next period starts on "
+                .$subscription->current_period_end->format('D j M')." with {$plan->sessions_included} "
+                .($plan->sessions_included === 1 ? 'credit' : 'credits').'.';
+        }
+
+        AuditLog::record($request, 'client_subscription.renewed', "{$userName} renewed \"{$plan->name}\" via a real Flutterwave payment.", [
+            'client_subscription_id' => $subscription->id,
+            'payment_transaction_id' => $transaction->id,
+        ]);
+
+        return [
+            'route' => 'subscription.index',
+            'params' => [],
+            'status_message' => $message,
+        ];
+    }
+
+    /**
      * Converts the combined unused value of every currently-active subscription into
      * an equivalent number of credits on $newPlan, using price-per-session as the
      * common unit. Shared by checkout() (to show the client the math before they
@@ -239,7 +475,11 @@ class SubscriptionController extends Controller
             $plan = $subscription->subscriptionPlan;
             $valuePerSession = ($plan && $plan->sessions_included > 0) ? $plan->price / $plan->sessions_included : 0;
 
-            return $subscription->sessions_remaining * $valuePerSession;
+            // A next period that's already been paid for (renewed early) counts too, so
+            // switching plans never throws that payment away.
+            $prepaid = ($plan && $subscription->renewal_paid_at) ? (float) $plan->price : 0;
+
+            return $subscription->sessions_remaining * $valuePerSession + $prepaid;
         });
 
         $newValuePerSession = $newPlan->sessions_included > 0 ? $newPlan->price / $newPlan->sessions_included : 0;
@@ -249,6 +489,7 @@ class SubscriptionController extends Controller
         return [
             'remaining_sessions' => (int) $activeSubscriptions->sum('sessions_remaining'),
             'remaining_value' => round($totalRemainingValue, 2),
+            'includes_prepaid' => $activeSubscriptions->contains(fn ($sub) => $sub->renewal_paid_at !== null),
             'bonus_credits' => $bonusCredits,
         ];
     }
