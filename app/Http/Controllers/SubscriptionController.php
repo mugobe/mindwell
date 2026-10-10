@@ -7,14 +7,12 @@ use App\Models\ClientSubscription;
 use App\Models\PaymentTransaction;
 use App\Models\SubscriptionPlan;
 use App\Models\Voucher;
-use App\Services\FlutterwaveClient;
+use App\Services\Checkout;
 use App\Services\Vouchers;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Str;
 use Illuminate\View\View;
-use Throwable;
 
 /**
  * Client-facing self-checkout for subscription plans, added 2026-09-27. Before this,
@@ -225,81 +223,33 @@ class SubscriptionController extends Controller
      */
     private function payWithVoucher(Request $request, string $voucherPurpose, float $price, $profile, array $base, string $prefix, array $target, \Closure $back): RedirectResponse
     {
-        $vouchers = app(Vouchers::class);
+        // Since 2026-10-09 the voucher + transaction + Mobile Money steps live in
+        // App\Services\Checkout, shared with the mobile API.
+        $checkout = app(Checkout::class);
         $code = $request->input('voucher');
 
-        $preview = $vouchers->quote($code, $voucherPurpose, $price, $profile, $target);
+        $preview = app(Vouchers::class)->quote($code, $voucherPurpose, $price, $profile, $target);
         if ($request->filled('voucher') && ! $preview['ok']) {
             return $back()->with('error', $preview['error']);
         }
 
         $free = $preview['applied'] && $preview['total'] <= 0;
-        $validated = $free ? [] : $this->validateMobileMoney($request);
+        $momo = $free ? null : $request->validate(Checkout::MOMO_RULES, Checkout::MOMO_MESSAGES);
 
-        $result = $vouchers->withLock($code, function () use ($vouchers, $code, $voucherPurpose, $price, $profile, $target, $free, $validated, $base, $prefix, $request) {
-            $quote = $vouchers->quote($code, $voucherPurpose, $price, $profile, $target);
-            if (($request->filled('voucher') && ! $quote['ok']) || (($quote['applied'] && $quote['total'] <= 0) !== $free)) {
-                return ['error' => $quote['error'] ?? 'That voucher has just changed — please check the price and try again.'];
-            }
-
-            return ['transaction' => PaymentTransaction::create(array_merge($base, [
-                'amount' => $quote['total'],
-                'tx_ref' => ($free ? 'MW-VOUCHER-' : $prefix).strtoupper(Str::random(10)),
-                'method_label' => $free
-                    ? 'Voucher '.$quote['voucher']->code
-                    : PaymentTransaction::methodLabelFor($validated['network'], $validated['phone_number']),
-            ], Vouchers::transactionFields($quote)))];
-        });
+        $result = $checkout->createTransaction($code, $voucherPurpose, $price, $profile, $target, $base, $prefix, $momo);
 
         if (isset($result['error'])) {
             return $back()->with('error', $result['error']);
         }
 
-        if ($free) {
+        if ($result['free']) {
             return app(FlutterwavePaymentController::class)->completeWithoutCharge($result['transaction'], $request);
         }
 
-        return $this->startMobileMoneyCharge($result['transaction'], $validated, $request->user(), $back);
-    }
-
-    private function validateMobileMoney(Request $request): array
-    {
-        return $request->validate([
-            'network' => ['required', 'in:MTN,AIRTEL'],
-            'phone_number' => ['required', 'regex:/^(0|256)?7[0-9]{8}$/'],
-        ], [
-            'phone_number.regex' => 'Enter a valid Ugandan mobile number, e.g. 0772123456.',
-        ]);
-    }
-
-    /**
-     * Shared by subscribe() and renew(): asks Flutterwave to start the Mobile Money
-     * charge for $transaction and sends the client on to approve it.
-     */
-    private function startMobileMoneyCharge(PaymentTransaction $transaction, array $validated, $user, \Closure $onFail): RedirectResponse
-    {
-        try {
-            $charge = app(FlutterwaveClient::class)->initiateMobileMoneyCharge(
-                reference: $transaction->tx_ref,
-                amount: (float) $transaction->amount,
-                currency: $transaction->currency,
-                network: $validated['network'],
-                phoneNumber: $this->normalizePhoneNumber($validated['phone_number']),
-                customer: [
-                    'email' => $user->email,
-                    'name' => $user->name,
-                ],
-            );
-        } catch (Throwable $e) {
-            $transaction->update(['status' => 'failed']);
-
-            return $onFail()->with('error', "Payment couldn't be started: {$e->getMessage()}");
+        $charge = $checkout->startMobileMoney($result['transaction'], $momo, $request->user());
+        if (! $charge['ok']) {
+            return $back()->with('error', $charge['error']);
         }
-
-        $transaction->update([
-            'flw_transaction_id' => $charge['id'],
-            'meta' => ['instruction' => $charge['instruction']],
-        ]);
 
         if ($charge['redirect_url']) {
             return redirect()->away($charge['redirect_url']);
@@ -307,24 +257,7 @@ class SubscriptionController extends Controller
 
         // Normal Mobile Money case — client approves on their phone; see
         // FlutterwavePaymentController::waiting().
-        return redirect()->route('payments.flutterwave.waiting', $transaction);
-    }
-
-    /**
-     * Duplicated from SessionRequestController on purpose — same reasoning as
-     * routeForStatus()-style duplication elsewhere in this codebase. See that
-     * method's comment for why this strips to a LOCAL-only number (no leading 0, no
-     * country code) rather than the 256-prefixed format an earlier version used.
-     */
-    private function normalizePhoneNumber(string $phoneNumber): string
-    {
-        $digits = preg_replace('/\D/', '', $phoneNumber);
-
-        if (str_starts_with($digits, '256') && strlen($digits) === 12) {
-            return substr($digits, 3);
-        }
-
-        return str_starts_with($digits, '0') ? substr($digits, 1) : $digits;
+        return redirect()->route('payments.flutterwave.waiting', $result['transaction']);
     }
 
     /**
@@ -469,7 +402,7 @@ class SubscriptionController extends Controller
      * confirm) and subscribe() (to actually apply it), so what's shown always matches
      * what happens.
      */
-    private function prorationFor(Collection $activeSubscriptions, SubscriptionPlan $newPlan): array
+    public function prorationFor(Collection $activeSubscriptions, SubscriptionPlan $newPlan): array
     {
         $totalRemainingValue = $activeSubscriptions->sum(function (ClientSubscription $subscription) {
             $plan = $subscription->subscriptionPlan;

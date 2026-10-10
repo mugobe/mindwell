@@ -65,6 +65,9 @@ class PasswordResetController extends Controller
                     'must_change_password' => false,
                 ])->save();
 
+                // Mobile app (2026-10-09): signing in again is required on every phone.
+                rescue(fn () => $user->tokens()->delete(), null, false);
+
                 event(new PasswordReset($user));
                 $resetUser = $user;
             }

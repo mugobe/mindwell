@@ -45,30 +45,45 @@ class EmployerSeatController extends Controller
 
         $profile = $request->user()->clientProfile ?? $request->user()->clientProfile()->create([]);
 
+        $result = $this->redeemCode($request, $profile, $validated['seat_code']);
+
+        if (isset($result['error'])) {
+            return back()->withErrors(['seat_code' => $result['error']])->withInput();
+        }
+
+        return redirect()->route('employer-seat.index')->with('status', $result['message']);
+    }
+
+    /**
+     * The checks + redemption, shared with the mobile API (2026-10-09).
+     * Returns ['error' => string] or ['seat' => EmployerSeat, 'message' => string].
+     */
+    public function redeemCode(Request $request, $profile, string $rawCode): array
+    {
         if (EmployerSeat::activeFor($profile->id)) {
-            return back()->withErrors(['seat_code' => "You already have an active employer benefit -- a client can only be covered by one employer seat at a time."])->withInput();
+            return ['error' => 'You already have an active employer benefit -- a client can only be covered by one employer seat at a time.'];
         }
 
         // Codes are generated uppercase (Admin\EmployerAccountController::store()); normalize
         // whatever the client typed so stray casing/whitespace doesn't cause a false miss.
-        $code = strtoupper(trim($validated['seat_code']));
+        $code = strtoupper(trim($rawCode));
 
         $seat = EmployerSeat::where('seat_code', $code)->with('employerAccount')->first();
 
         if (! $seat) {
-            return back()->withErrors(['seat_code' => "That code doesn't match any employer benefit. Double-check it and try again."])->withInput();
+            return ['error' => "That code doesn't match any employer benefit. Double-check it and try again."];
         }
 
         if ($seat->client_profile_id) {
-            return back()->withErrors(['seat_code' => 'That code has already been redeemed by someone else.'])->withInput();
+            return ['error' => 'That code has already been redeemed by someone else.'];
         }
 
         if (! $seat->is_active) {
-            return back()->withErrors(['seat_code' => 'That code is no longer active.'])->withInput();
+            return ['error' => 'That code is no longer active.'];
         }
 
         if (! $seat->employerAccount || ! $seat->employerAccount->isCurrentlyActive()) {
-            return back()->withErrors(['seat_code' => "This employer's benefit isn't currently active -- their contract may have ended."])->withInput();
+            return ['error' => "This employer's benefit isn't currently active -- their contract may have ended."];
         }
 
         $seat->update([
@@ -81,6 +96,6 @@ class EmployerSeatController extends Controller
             'employer_account_id' => $seat->employer_account_id,
         ]);
 
-        return redirect()->route('employer-seat.index')->with('status', "You're covered by {$seat->employerAccount->company_name} -- sessions are free while this stays active.");
+        return ['seat' => $seat, 'message' => "You're covered by {$seat->employerAccount->company_name} -- sessions are free while this stays active."];
     }
 }

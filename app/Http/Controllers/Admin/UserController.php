@@ -114,6 +114,9 @@ class UserController extends Controller
             'remember_token' => Str::random(60),
         ])->save();
 
+        // Mobile app (2026-10-09): sign the person out on every phone too.
+        rescue(fn () => $user->tokens()->delete(), null, false);
+
         AuditLog::record($request, 'user.temporary_password_set', 'Set a temporary password for '.$user->name.' ('.$user->email.').', ['user_id' => $user->id]);
 
         try {

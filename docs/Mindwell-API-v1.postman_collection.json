@@ -1,0 +1,1145 @@
+{
+  "info": {
+    "name": "Mindwell API v1",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Mindwell mobile API (clients only). Run 'Auth \u2192 Log in' first; it saves the token. Requests that create things save the ids they return (session_id, transaction_id \u2026) for the next requests."
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:8000/api/v1"
+    },
+    {
+      "key": "token",
+      "value": ""
+    },
+    {
+      "key": "session_id",
+      "value": ""
+    },
+    {
+      "key": "transaction_id",
+      "value": ""
+    },
+    {
+      "key": "therapist_id",
+      "value": ""
+    },
+    {
+      "key": "plan_id",
+      "value": ""
+    },
+    {
+      "key": "conversation_id",
+      "value": ""
+    },
+    {
+      "key": "entry_id",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "0 \u00b7 Public",
+      "item": [
+        {
+          "name": "Config",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/config",
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "1 \u00b7 Auth",
+      "item": [
+        {
+          "name": "Register (new client)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/auth/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"Test\",\n  \"last_name\": \"Client\",\n  \"date_of_birth\": \"1995-05-20\",\n  \"gender\": \"female\",\n  \"email\": \"test.client+1@example.com\",\n  \"password\": \"password123\",\n  \"password_confirmation\": \"password123\",\n  \"phone\": \"0772123456\",\n  \"accept_terms\": true,\n  \"accept_privacy\": true,\n  \"accept_emergency\": true,\n  \"device_name\": \"Postman\"\n}"
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "if (j.token) { pm.collectionVariables.set('token', j.token); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Log in",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/auth/login",
+            "description": "Use a CLIENT account (e.g. joseph kanyike's). Therapists/admins get 403 not_client.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"joseph@example.com\",\n  \"password\": \"your-password\",\n  \"device_name\": \"Postman\"\n}"
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "if (j.token) { pm.collectionVariables.set('token', j.token); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Forgot password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/auth/forgot-password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"joseph@example.com\"\n}"
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          }
+        },
+        {
+          "name": "Log out (this device)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/auth/logout"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2 \u00b7 Me",
+      "item": [
+        {
+          "name": "Who am I",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/me"
+          }
+        },
+        {
+          "name": "Update My details",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/me",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"Joseph\",\n  \"last_name\": \"Kanyike\",\n  \"date_of_birth\": \"1990-01-01\",\n  \"gender\": \"male\",\n  \"preferred_language\": \"Luganda\",\n  \"emergency_contact_name\": \"Sarah\",\n  \"emergency_contact_phone\": \"0701234567\",\n  \"emergency_contact_relationship\": \"Sister\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Notification settings",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/me/notifications",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phone\": \"0772123456\",\n  \"notify_email\": true,\n  \"notify_sms\": true\n}"
+            }
+          }
+        },
+        {
+          "name": "Change password",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/me/password",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current_password\": \"old-password\",\n  \"password\": \"new-password-123\",\n  \"password_confirmation\": \"new-password-123\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Accept updated Terms",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/consent",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accept_terms\": true,\n  \"accept_privacy\": true,\n  \"accept_emergency\": true\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3 \u00b7 Home",
+      "item": [
+        {
+          "name": "Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/dashboard"
+          }
+        }
+      ]
+    },
+    {
+      "name": "4 \u00b7 Intake",
+      "item": [
+        {
+          "name": "Questions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/intake"
+          }
+        },
+        {
+          "name": "Submit intake",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/intake",
+            "description": "Only works once per client (409 intake_done after). Set phq_9 above 0 to test the crisis outcome.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phq_1\": 1,\n  \"phq_2\": 1,\n  \"phq_3\": 1,\n  \"phq_4\": 1,\n  \"phq_5\": 1,\n  \"phq_6\": 1,\n  \"phq_7\": 1,\n  \"phq_8\": 1,\n  \"phq_9\": 0,\n  \"gad_1\": 1,\n  \"gad_2\": 1,\n  \"gad_3\": 1,\n  \"gad_4\": 1,\n  \"gad_5\": 1,\n  \"gad_6\": 1,\n  \"gad_7\": 1,\n  \"about_topics\": [\n    \"Anxiety or worry\",\n    \"Sleep\"\n  ],\n  \"about_own_words\": \"Testing from Postman\",\n  \"about_mood\": 3,\n  \"skipped\": [\n    \"background\"\n  ]\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "try { const v = j.session && j.session.id; if (v) pm.collectionVariables.set('session_id', v); } catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "About you \u2014 get",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/about-you"
+          }
+        },
+        {
+          "name": "About you \u2014 save",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/about-you",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"about_topics\": [\n    \"Stress or burnout\"\n  ],\n  \"about_goals\": [\n    \"Practical tools to cope\"\n  ],\n  \"about_goals_text\": \"Sleep better\"\n}"
+            }
+          }
+        },
+        {
+          "name": "About you \u2014 not now",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/about-you/not-now"
+          }
+        }
+      ]
+    },
+    {
+      "name": "5 \u00b7 Therapists & booking",
+      "item": [
+        {
+          "name": "List therapists",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/therapists"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "try { const v = j.therapists[0].id; if (v) pm.collectionVariables.set('therapist_id', v); } catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Therapist + open times",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/therapists/{{therapist_id}}"
+          }
+        },
+        {
+          "name": "Book a time",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/therapists/{{therapist_id}}/book",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"scheduled_at\": \"PASTE one of the times from the previous call\",\n  \"session_mode\": \"video\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "try { const v = j.session.id; if (v) pm.collectionVariables.set('session_id', v); } catch (e) {}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6 \u00b7 Sessions",
+      "item": [
+        {
+          "name": "My sessions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/sessions"
+          }
+        },
+        {
+          "name": "One session",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/sessions/{{session_id}}"
+          }
+        },
+        {
+          "name": "Lobby (poll every few seconds)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/sessions/{{session_id}}/lobby"
+          }
+        },
+        {
+          "name": "Stop waiting",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/sessions/{{session_id}}/stop-waiting"
+          }
+        },
+        {
+          "name": "Change \u2014 open times",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/sessions/{{session_id}}/change"
+          }
+        },
+        {
+          "name": "Change \u2014 ask to cancel",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/sessions/{{session_id}}/change",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"cancel\",\n  \"reason\": \"Testing\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Video room state",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/sessions/{{session_id}}/room"
+          }
+        },
+        {
+          "name": "Video token (only when open)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/sessions/{{session_id}}/room/token"
+          }
+        },
+        {
+          "name": "Rate session",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/sessions/{{session_id}}/rating",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rating\": 5,\n  \"comment\": \"Very helpful\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "7 \u00b7 Paying",
+      "item": [
+        {
+          "name": "Session price (voucher preview)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/sessions/{{session_id}}/checkout?voucher="
+          }
+        },
+        {
+          "name": "Pay for session (Mobile Money)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/sessions/{{session_id}}/pay",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"network\": \"MTN\",\n  \"phone_number\": \"0772123456\",\n  \"voucher\": \"\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "try { const v = j.payment && j.payment.id; if (v) pm.collectionVariables.set('transaction_id', v); } catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Payment status (poll)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/payments/{{transaction_id}}"
+          }
+        },
+        {
+          "name": "SANDBOX: approve payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/payments/{{transaction_id}}/simulate",
+            "description": "Only on your local machine with the Flutterwave sandbox (404 elsewhere).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"outcome\": \"approve\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Payment history",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/payments"
+          }
+        },
+        {
+          "name": "Receipt PDF",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/payments/{{transaction_id}}/receipt"
+          }
+        }
+      ]
+    },
+    {
+      "name": "8 \u00b7 Plans & employer",
+      "item": [
+        {
+          "name": "Plans + my plan",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/plans"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "try { const v = j.plans[0].id; if (v) pm.collectionVariables.set('plan_id', v); } catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Plan price + carry-over",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/plans/{{plan_id}}/checkout?voucher="
+          }
+        },
+        {
+          "name": "Subscribe",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/plans/{{plan_id}}/subscribe",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"network\": \"AIRTEL\",\n  \"phone_number\": \"0701234567\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "try { const v = j.payment && j.payment.id; if (v) pm.collectionVariables.set('transaction_id', v); } catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Renew \u2014 price",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/subscription/renew"
+          }
+        },
+        {
+          "name": "Renew \u2014 pay",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/subscription/renew",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"network\": \"MTN\",\n  \"phone_number\": \"0772123456\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "try { const v = j.payment && j.payment.id; if (v) pm.collectionVariables.set('transaction_id', v); } catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Employer benefit",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/employer-benefit"
+          }
+        },
+        {
+          "name": "Redeem employer code",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/employer-benefit",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"seat_code\": \"ABCD1234\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "9 \u00b7 Messages",
+      "item": [
+        {
+          "name": "Inbox",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/messages"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "try { const v = j.conversations[0] && j.conversations[0].therapist.id; if (v) pm.collectionVariables.set('therapist_id', v); } catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Open chat with therapist",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/messages/with/{{therapist_id}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "try { const v = j.conversation_id; if (v) pm.collectionVariables.set('conversation_id', v); } catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Send message",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/conversations/{{conversation_id}}/messages",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"body\": \"Hello from the API\"\n}"
+            }
+          }
+        },
+        {
+          "name": "New messages since",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/conversations/{{conversation_id}}/poll?since=2026-01-01T00:00:00Z"
+          }
+        },
+        {
+          "name": "Unread count",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/messages/unread"
+          }
+        }
+      ]
+    },
+    {
+      "name": "10 \u00b7 Journal & progress",
+      "item": [
+        {
+          "name": "Journal",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/journal"
+          }
+        },
+        {
+          "name": "Add mood entry",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/journal",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mood\": 4,\n  \"body\": \"Better today\",\n  \"shared_with_therapist\": false\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "try { const v = j.entry.id; if (v) pm.collectionVariables.set('entry_id', v); } catch (e) {}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Share entry",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/journal/{{entry_id}}",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"shared_with_therapist\": true\n}"
+            }
+          }
+        },
+        {
+          "name": "Delete entry",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/journal/{{entry_id}}"
+          }
+        },
+        {
+          "name": "Progress",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/progress"
+          }
+        },
+        {
+          "name": "Check-in questions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/check-in"
+          }
+        },
+        {
+          "name": "Submit check-in",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/check-in",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"phq_1\": 1,\n  \"phq_2\": 1,\n  \"phq_3\": 1,\n  \"phq_4\": 1,\n  \"phq_5\": 1,\n  \"phq_6\": 1,\n  \"phq_7\": 1,\n  \"phq_8\": 1,\n  \"phq_9\": 0,\n  \"gad_1\": 1,\n  \"gad_2\": 1,\n  \"gad_3\": 1,\n  \"gad_4\": 1,\n  \"gad_5\": 1,\n  \"gad_6\": 1,\n  \"gad_7\": 1\n}"
+            }
+          }
+        },
+        {
+          "name": "Share mood chart",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{base_url}}/progress/share-mood",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"share\": true\n}"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

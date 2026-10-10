@@ -68,6 +68,24 @@ class IntakeController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        $validated = $request->validate(self::screeningRules());
+
+        $result = $this->submit($request, $validated);
+
+        if ($result['outcome'] === 'crisis') {
+            return redirect()->route('intake.crisis');
+        }
+
+        $request->session()->flash('status', $result['message']);
+
+        return $result['outcome'] === 'lobby'
+            ? redirect()->route('sessions.lobby', $result['session'])
+            : redirect()->route('sessions.checkout', $result['session']);
+    }
+
+    /** The PHQ-9 + GAD-7 rules (shared with the mobile API). */
+    public static function screeningRules(): array
+    {
         $rules = [];
         foreach (array_keys(self::PHQ9_ITEMS) as $i) {
             $rules["phq_{$i}"] = ['required', 'integer', 'between:0,3'];
@@ -75,8 +93,23 @@ class IntakeController extends Controller
         foreach (array_keys(self::GAD7_ITEMS) as $i) {
             $rules["gad_{$i}"] = ['required', 'integer', 'between:0,3'];
         }
-        $validated = $request->validate($rules);
 
+        return $rules;
+    }
+
+    /** @return array{phq9: array, gad7: array, options: array} */
+    public static function screeningItems(): array
+    {
+        return ['phq9' => self::PHQ9_ITEMS, 'gad7' => self::GAD7_ITEMS, 'options' => self::OPTIONS];
+    }
+
+    /**
+     * Everything after validation (2026-10-09: split out of store() so the website and the
+     * mobile API run the exact same steps). Returns
+     *   ['outcome' => 'crisis'|'lobby'|'checkout', 'session' => ?TherapySession, 'message' => ?string]
+     */
+    public function submit(Request $request, array $validated): array
+    {
         $phq9Score = collect(range(1, 9))->sum(fn ($i) => (int) $validated["phq_{$i}"]);
         $gad7Score = collect(range(1, 7))->sum(fn ($i) => (int) $validated["gad_{$i}"]);
         $selfHarmItem = (int) $validated['phq_9'];
@@ -138,7 +171,7 @@ class IntakeController extends Controller
                 \Illuminate\Support\Facades\Log::error('Intake crisis alert could not be sent', ['crisis_flag_id' => $flag->id, 'error' => $e->getMessage()]);
             }
 
-            return redirect()->route('intake.crisis');
+            return ['outcome' => 'crisis', 'session' => null, 'message' => null];
         }
 
         // Phase 0 (2026-10-05), from the CLIENT DRAFT: a supportive word after screening
@@ -146,7 +179,6 @@ class IntakeController extends Controller
         $supportMessage = in_array($riskLevel, ['moderate', 'high'], true)
             ? 'Thank you for completing your assessment. Your answers suggest you may be experiencing symptoms that could benefit from professional support — you\'re in the right place.'
             : 'Thank you for completing your assessment. Your answers will help your therapist understand how you\'ve been feeling.';
-        $request->session()->flash('status', $supportMessage);
 
         // Not a crisis — move straight into the payment/routing flow the client asked for,
         // instead of just marking the intake as done. See SessionRequestController for what
@@ -173,10 +205,10 @@ class IntakeController extends Controller
             $activeSubscription?->decrement('sessions_remaining');
             $session->update(['entered_lobby_at' => now()]);
 
-            return redirect()->route('sessions.lobby', $session);
+            return ['outcome' => 'lobby', 'session' => $session, 'message' => $supportMessage];
         }
 
-        return redirect()->route('sessions.checkout', $session);
+        return ['outcome' => 'checkout', 'session' => $session, 'message' => $supportMessage];
     }
 
     /**
@@ -188,7 +220,7 @@ class IntakeController extends Controller
      * About-you answers that pass validation. Fields that fail are dropped (and logged)
      * instead of failing the whole intake.
      */
-    private static function validAbout(Request $request, ?ClientIntakeDetail $existing): array
+    public static function validAbout(Request $request, ?ClientIntakeDetail $existing): array
     {
         if (! ClientIntakeDetail::tableReady() || ! IntakeQuestions::anyOn()) {
             return [];

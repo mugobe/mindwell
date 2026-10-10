@@ -159,7 +159,8 @@ class MessageController extends Controller
     {
         $role = $this->roleIn($request->user(), $conversation);
 
-        $since = $request->date('since');
+        // rescue(): a badly encoded `since` (e.g. "+03:00" sent unencoded) just means "all".
+        $since = rescue(fn () => $request->date('since'), null, false);
 
         $messages = $conversation->messages()
             ->when($since, fn ($q) => $q->where('created_at', '>=', $since->subSeconds(2)))

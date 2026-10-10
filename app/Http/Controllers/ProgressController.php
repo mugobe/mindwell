@@ -62,6 +62,22 @@ class ProgressController extends Controller
         }
 
         $validated = $request->validate(Screeners::rules());
+
+        $checkIn = $this->record($request, $validated, $notifier);
+
+        if ($checkIn->self_harm) {
+            return redirect()->route('progress.crisis');
+        }
+
+        return redirect()->route('progress.index')->with('status', 'Thank you — your check-in is saved.');
+    }
+
+    /**
+     * Save a check-in and, if item 9 was answered positively, raise the crisis flag and
+     * alert their therapist + every admin. Shared with the mobile API (2026-10-09).
+     */
+    public function record(Request $request, array $validated, Notifier $notifier): CheckIn
+    {
         $result = Screeners::score($validated);
         $profile = $request->user()->clientProfile;
 
@@ -105,11 +121,9 @@ class ProgressController extends Controller
             } catch (Throwable $e) {
                 Log::error('Crisis alert could not be sent', ['crisis_flag_id' => $flag->id, 'error' => $e->getMessage()]);
             }
-
-            return redirect()->route('progress.crisis');
         }
 
-        return redirect()->route('progress.index')->with('status', 'Thank you — your check-in is saved.');
+        return $checkIn;
     }
 
     public function crisis(): View

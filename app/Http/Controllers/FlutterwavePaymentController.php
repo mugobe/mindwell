@@ -210,7 +210,7 @@ class FlutterwavePaymentController extends Controller
      * sandbox. A local machine accidentally configured with live credentials/base URL
      * still gets no simulate button.
      */
-    private function simulationAllowed(): bool
+    public function simulationAllowed(): bool
     {
         return app()->environment('local')
             && str_contains((string) config('flutterwave.base_url'), 'sandbox');
@@ -275,19 +275,103 @@ class FlutterwavePaymentController extends Controller
      */
     public function completeWithoutCharge(PaymentTransaction $transaction, Request $request): RedirectResponse
     {
+        $result = $this->finalizeFree($transaction, $request);
+
+        $redirect = redirect()->route($result['route'], $result['params']);
+
+        return $redirect->with('status', $result['status_message'] ?? 'Your voucher covered the full price — nothing to pay.');
+    }
+
+    /** The voucher-covered case without a redirect — shared with the mobile API (2026-10-09). */
+    public function finalizeFree(PaymentTransaction $transaction, ?Request $request): array
+    {
         abort_unless((float) $transaction->amount <= 0 && $transaction->voucher_id, 422);
 
-        $result = $this->finalize($transaction, [
+        return $this->finalize($transaction, [
             'status' => 'succeeded',
             'amount' => 0,
             'currency' => $transaction->currency,
             'reference' => $transaction->tx_ref,
             'voucher_free' => true,
         ], $request);
+    }
 
-        $redirect = redirect()->route($result['route'], $result['params']);
+    /**
+     * One status check for the mobile API (2026-10-09) — the same steps callback() takes,
+     * returned as data instead of a redirect:
+     *   ['state' => 'succeeded'|'pending'|'failed'|'unreachable', 'message' => ?string]
+     * 'succeeded' means finalize() has run (now or earlier).
+     */
+    public function checkForApi(PaymentTransaction $transaction, ?Request $request): array
+    {
+        if ($transaction->processed_at) {
+            return ['state' => 'succeeded', 'message' => null];
+        }
+        if ($transaction->status !== 'pending') {
+            return ['state' => 'failed', 'message' => 'Payment was not completed. You can try again.'];
+        }
+        if (! $transaction->flw_transaction_id) {
+            return ['state' => 'failed', 'message' => 'Payment could not be confirmed. Please try again.'];
+        }
 
-        return $redirect->with('status', $result['status_message'] ?? 'Your voucher covered the full price — nothing to pay.');
+        try {
+            $verified = app(FlutterwaveClient::class)->verifyCharge($transaction->flw_transaction_id);
+        } catch (Throwable $e) {
+            Log::warning('Flutterwave verify failed (API)', ['tx_ref' => $transaction->tx_ref, 'error' => $e->getMessage()]);
+
+            // Not a failure of the payment itself — keep waiting, never ask to pay again.
+            return ['state' => 'unreachable', 'message' => "We couldn't reach Flutterwave just now. We'll keep checking."];
+        }
+
+        $outcome = $this->classifyStatus($verified);
+
+        if ($outcome === 'pending') {
+            return ['state' => 'pending', 'message' => null];
+        }
+
+        if ($outcome === 'failed' || ! $this->verificationMatches($transaction, $verified)) {
+            $transaction->update(['status' => 'failed', 'meta' => $verified]);
+
+            return ['state' => 'failed', 'message' => 'Payment was not completed. You can try again.'];
+        }
+
+        $result = $this->finalize($transaction, $verified, $request);
+
+        return ['state' => 'succeeded', 'message' => $result['status_message']];
+    }
+
+    /** Local sandbox only, for the API — same rules as simulate(). */
+    public function simulateForApi(PaymentTransaction $transaction, string $outcome, ?Request $request): array
+    {
+        abort_unless($this->simulationAllowed(), 404);
+
+        if ($transaction->processed_at) {
+            return ['state' => 'succeeded', 'message' => null];
+        }
+        if ($transaction->status !== 'pending') {
+            return ['state' => 'failed', 'message' => 'Payment was not completed.'];
+        }
+
+        Log::warning('SIMULATED Flutterwave outcome via API (local sandbox only)', ['tx_ref' => $transaction->tx_ref, 'outcome' => $outcome]);
+
+        $simulated = [
+            'id' => $transaction->flw_transaction_id,
+            'status' => $outcome === 'approve' ? 'succeeded' : 'failed',
+            'amount' => (float) $transaction->amount,
+            'currency' => $transaction->currency,
+            'reference' => $transaction->tx_ref,
+            'simulated' => true,
+        ];
+
+        if ($outcome !== 'approve') {
+            $transaction->update(['status' => 'failed', 'meta' => $simulated]);
+
+            return ['state' => 'failed', 'message' => 'Payment was not completed (simulated failure).'];
+        }
+
+        $result = $this->finalize($transaction, $simulated, $request);
+
+        return ['state' => 'succeeded', 'message' => $result['status_message']];
     }
 
     /**
@@ -333,22 +417,45 @@ class FlutterwavePaymentController extends Controller
      *
      * @return array{route: string, params: array, status_message: ?string}
      */
-    private function finalize(PaymentTransaction $transaction, array $verified, ?Request $request): array
+    public function finalize(PaymentTransaction $transaction, array $verified, ?Request $request): array
     {
-        $transaction->update([
-            'status' => 'successful',
-            'meta' => $verified,
-            'processed_at' => now(),
-        ]);
+        // Claim the transaction atomically (2026-10-09): with the mobile app polling as well
+        // as the browser callback and the webhook, two checks can land at the same moment.
+        // Only the one that flips processed_at from NULL goes on to apply the payment.
+        // The claim and applying the payment happen in ONE database transaction: if applying
+        // fails, the claim is rolled back too, so a later check can try again instead of
+        // reporting a paid-for-nothing success.
+        $result = \Illuminate\Support\Facades\DB::transaction(function () use ($transaction, $verified, $request) {
+            $claimed = PaymentTransaction::whereKey($transaction->getKey())
+                ->whereNull('processed_at')
+                ->update(['status' => 'successful', 'processed_at' => now()]);
 
-        if ($transaction->purpose === 'session') {
-            $result = $this->finalizeSession($transaction, $request);
-        } else {
+            if (! $claimed) {
+                return null;
+            }
+
+            $transaction->refresh();
+            $transaction->update(['meta' => $verified]);
+
+            if ($transaction->purpose === 'session') {
+                return $this->finalizeSession($transaction, $request);
+            }
+
             // Renewal of an existing plan (2026-10-01) vs. buying / switching to a plan.
-            $result = $transaction->isRenewal()
+            return $transaction->isRenewal()
                 ? app(SubscriptionController::class)->finalizeRenewal($transaction, $request)
                 : app(SubscriptionController::class)->finalizeSubscription($transaction, $request);
+        });
+
+        if ($result === null) {
+            $transaction->refresh();
+
+            return $transaction->purpose === 'session'
+                ? ['route' => 'sessions.history', 'params' => [], 'status_message' => null]
+                : ['route' => 'subscription.index', 'params' => [], 'status_message' => null];
         }
+
+        $transaction->refresh();
 
         // Receipt number + receipt email (2026-10-02). Never throws.
         // Vouchers (2026-10-07): a use only counts once the payment has gone through.

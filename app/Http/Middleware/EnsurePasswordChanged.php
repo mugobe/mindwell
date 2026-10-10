@@ -18,9 +18,10 @@ class EnsurePasswordChanged
         $user = $request->user();
 
         if ($user && $user->must_change_password
-            && ! $request->routeIs('password.change', 'password.change.update', 'logout')) {
-            if ($request->expectsJson()) {
-                return response()->json(['message' => 'Please choose a new password first.'], 403);
+            && ! $request->routeIs('password.change', 'password.change.update', 'logout',
+                'api.v1.me', 'api.v1.me.password', 'api.v1.auth.logout')) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json(['message' => 'Please choose a new password first.', 'code' => 'password_change_required'], 403);
             }
 
             return redirect()->route('password.change');

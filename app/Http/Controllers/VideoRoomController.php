@@ -246,7 +246,7 @@ class VideoRoomController extends Controller
      *
      * @return array{state: string, other_live: bool, opens_at: Carbon, closes_at: Carbon, starts_at: Carbon}
      */
-    private function access(TherapySession $session, string $role): array
+    public function access(TherapySession $session, string $role): array
     {
         $startsAt = $session->scheduled_at ?? now();
         $duration = $session->duration_minutes ?: (int) config('mindwell.session_duration_minutes', 70);

@@ -15,6 +15,8 @@ return Application::configure(basePath: dirname(__DIR__))
         // Sanctum: allow the Flutter app to authenticate via bearer tokens
         // while Blade keeps using the default session/cookie guard.
         $middleware->api(prepend: [
+            // Mobile API v1 (2026-10-09): always answer in JSON.
+            \App\Http\Middleware\ForceJsonResponse::class,
             \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
         ]);
 
@@ -33,5 +35,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->append(\App\Http\Middleware\SecurityHeaders::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        // Mobile API v1 (2026-10-09): anything under /api answers in JSON (validation
+        // errors, 403/404, 500s) even if the app forgets the Accept header.
+        $exceptions->shouldRenderJsonWhen(
+            fn (\Illuminate\Http\Request $request, \Throwable $e) => $request->is('api/*') || $request->expectsJson()
+        );
     })->create();

@@ -5,15 +5,13 @@ namespace App\Http\Controllers;
 use App\Models\PaymentTransaction;
 use App\Models\Voucher;
 use App\Models\TherapySession;
-use App\Services\FlutterwaveClient;
+use App\Services\Checkout;
 use App\Services\SessionRouter;
 use App\Services\Vouchers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 use Illuminate\View\View;
-use Throwable;
 
 /**
  * The client-facing half of the "pay/use a credit → get routed → warm lobby" flow
@@ -94,87 +92,43 @@ class SessionRequestController extends Controller
         }
 
         // Vouchers (2026-10-07): re-checked here, never trusted from the preview — and
-        // again under a lock on the voucher when the payment is created.
-        $vouchers = app(Vouchers::class);
+        // again under a lock on the voucher when the payment is created. Since
+        // 2026-10-09 the steps live in App\Services\Checkout, shared with the mobile API.
+        $checkout = app(Checkout::class);
         $code = $request->input('voucher');
         $price = $therapySession->listPrice();
         $profile = $therapySession->clientProfile;
         $target = ['therapy_session_id' => $therapySession->id];
 
-        $preview = $vouchers->quote($code, Voucher::FOR_SESSION, $price, $profile, $target);
+        $preview = app(Vouchers::class)->quote($code, Voucher::FOR_SESSION, $price, $profile, $target);
         if ($request->filled('voucher') && ! $preview['ok']) {
             return redirect()->route('sessions.checkout', $therapySession)->with('error', $preview['error']);
         }
 
         // Fully covered by a voucher: nothing to charge, so no Mobile Money step.
         $free = $preview['applied'] && $preview['total'] <= 0;
+        $momo = $free ? null : $request->validate(Checkout::MOMO_RULES, Checkout::MOMO_MESSAGES);
 
-        $validated = $free ? [] : $request->validate([
-            'network' => ['required', 'in:MTN,AIRTEL'],
-            'phone_number' => ['required', 'regex:/^(0|256)?7[0-9]{8}$/'],
-        ], [
-            'phone_number.regex' => 'Enter a valid Ugandan mobile number, e.g. 0772123456.',
-        ]);
-
-        $currency = config('flutterwave.currency');
-
-        $result = $vouchers->withLock($code, function () use ($vouchers, $code, $price, $profile, $target, $free, $validated, $therapySession, $currency, $request) {
-            $quote = $vouchers->quote($code, Voucher::FOR_SESSION, $price, $profile, $target);
-            if (($request->filled('voucher') && ! $quote['ok']) || (($quote['applied'] && $quote['total'] <= 0) !== $free)) {
-                return ['error' => $quote['error'] ?? 'That voucher has just changed — please check the price and try again.'];
-            }
-
-            return ['transaction' => PaymentTransaction::create(array_merge([
-                'client_profile_id' => $therapySession->client_profile_id,
-                'purpose' => 'session',
-                'therapy_session_id' => $therapySession->id,
-                'tx_ref' => ($free ? 'MW-VOUCHER-' : 'MW-SESSION-').strtoupper(Str::random(10)),
-                'status' => 'pending',
-                'amount' => $quote['total'],
-                'currency' => $currency,
-                'method_label' => $free
-                    ? 'Voucher '.$quote['voucher']->code
-                    : PaymentTransaction::methodLabelFor($validated['network'], $validated['phone_number']),
-            ], Vouchers::transactionFields($quote)))];
-        });
+        $result = $checkout->createTransaction($code, Voucher::FOR_SESSION, $price, $profile, $target, [
+            'client_profile_id' => $therapySession->client_profile_id,
+            'purpose' => 'session',
+            'therapy_session_id' => $therapySession->id,
+        ], 'MW-SESSION-', $momo);
 
         if (isset($result['error'])) {
             return redirect()->route('sessions.checkout', $therapySession)->with('error', $result['error']);
         }
 
         $transaction = $result['transaction'];
-        $amount = (float) $transaction->amount;
 
-        if ($free) {
+        if ($result['free']) {
             return app(FlutterwavePaymentController::class)->completeWithoutCharge($transaction, $request);
         }
 
-        try {
-            $charge = app(FlutterwaveClient::class)->initiateMobileMoneyCharge(
-                reference: $transaction->tx_ref,
-                amount: $amount,
-                currency: $currency,
-                network: $validated['network'],
-                phoneNumber: $this->normalizePhoneNumber($validated['phone_number']),
-                customer: [
-                    'email' => $request->user()->email,
-                    'name' => $request->user()->name,
-                ],
-            );
-        } catch (Throwable $e) {
-            $transaction->update(['status' => 'failed']);
-
-            return redirect()->route('sessions.checkout', $therapySession)
-                ->with('error', "Payment couldn't be started: {$e->getMessage()}");
+        $charge = $checkout->startMobileMoney($transaction, $momo, $request->user());
+        if (! $charge['ok']) {
+            return redirect()->route('sessions.checkout', $therapySession)->with('error', $charge['error']);
         }
-
-        // Recorded immediately (before the client even approves anything) so callback()/
-        // webhook() always have a charge id to verify against — see the class docblock
-        // on FlutterwavePaymentController for why nothing there is trusted without it.
-        $transaction->update([
-            'flw_transaction_id' => $charge['id'],
-            'meta' => ['instruction' => $charge['instruction']],
-        ]);
 
         if ($charge['redirect_url']) {
             return redirect()->away($charge['redirect_url']);
@@ -184,26 +138,6 @@ class SessionRequestController extends Controller
         // no Flutterwave page at all — the client approves on their phone while this
         // app waits. See FlutterwavePaymentController::waiting().
         return redirect()->route('payments.flutterwave.waiting', $transaction);
-    }
-
-    /**
-     * Strips down to the LOCAL 9-digit number Flutterwave's v4 mobile_money schema
-     * expects (confirmed 2026-09-28 against a real worked example from Flutterwave's
-     * own engineering blog — country_code is a separate field, so phone_number itself
-     * carries no leading 0 and no country code). An earlier version of this method
-     * guessed a 256-prefixed international format instead, which was one of two bugs
-     * behind a real "Malformed request" response from the sandbox. Duplicated in
-     * SubscriptionController on purpose, same reasoning as routeForStatus() elsewhere.
-     */
-    private function normalizePhoneNumber(string $phoneNumber): string
-    {
-        $digits = preg_replace('/\D/', '', $phoneNumber);
-
-        if (str_starts_with($digits, '256') && strlen($digits) === 12) {
-            return substr($digits, 3);
-        }
-
-        return str_starts_with($digits, '0') ? substr($digits, 1) : $digits;
     }
 
     public function lobby(Request $request, TherapySession $therapySession): View|RedirectResponse

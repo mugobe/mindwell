@@ -70,17 +70,7 @@ class TherapistBookingController extends Controller
 
         $profile = $request->user()->clientProfile ?? $request->user()->clientProfile()->create([]);
 
-        // Lock this therapist's row while checking + creating, so two clients pressing
-        // "Book" for the same time at the same moment can't both get it.
-        $session = DB::transaction(function () use ($therapist, $wanted, $profile, $validated, $mode) {
-            TherapistProfile::whereKey($therapist->getKey())->lockForUpdate()->first();
-
-            if (! app(\App\Services\OpenSlots::class)->for($therapist, 7)->contains(fn ($slot) => $slot->equalTo($wanted))) {
-                return null;
-            }
-
-            return $this->createBooking($therapist, $profile, $validated, $mode);
-        });
+        $session = $this->bookSlot($therapist, $profile, $wanted, $mode);
 
         if (! $session) {
             return redirect()->route('therapists.book', $therapist)->with('error', 'Sorry, that time was just taken. Please pick another.');
@@ -89,6 +79,24 @@ class TherapistBookingController extends Controller
         return $session->status === 'pending_approval'
             ? redirect()->route('sessions.pending-approval', $session)
             : redirect()->route('sessions.checkout', $session);
+    }
+
+    /**
+     * Lock this therapist's row while checking + creating, so two clients pressing "Book"
+     * for the same time at the same moment can't both get it. Null when the time is no
+     * longer free. Shared with the mobile API (2026-10-09).
+     */
+    public function bookSlot(TherapistProfile $therapist, $profile, Carbon $wanted, string $mode): ?TherapySession
+    {
+        return DB::transaction(function () use ($therapist, $wanted, $profile, $mode) {
+            TherapistProfile::whereKey($therapist->getKey())->lockForUpdate()->first();
+
+            if (! app(\App\Services\OpenSlots::class)->for($therapist, 7)->contains(fn ($slot) => $slot->equalTo($wanted))) {
+                return null;
+            }
+
+            return $this->createBooking($therapist, $profile, ['scheduled_at' => $wanted], $mode);
+        });
     }
 
     private function createBooking(TherapistProfile $therapist, $profile, array $validated, string $mode): TherapySession

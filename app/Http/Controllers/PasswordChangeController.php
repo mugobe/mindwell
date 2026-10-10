@@ -39,6 +39,9 @@ class PasswordChangeController extends Controller
             'remember_token' => Str::random(60),
         ])->save();
 
+        // Mobile app (2026-10-09): changing the password on the website signs out the app.
+        rescue(fn () => $user->tokens()->delete(), null, false);
+
         AuditLog::record($request, 'user.password_changed', $user->name.' changed their password'.($wasForced ? ' (replacing a temporary one).' : '.'), [
             'user_id' => $user->id,
         ]);

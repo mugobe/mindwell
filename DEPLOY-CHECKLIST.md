@@ -73,3 +73,10 @@ MINDWELL_LEGAL_IS_DRAFT=true     # set false + bump MINDWELL_LEGAL_VERSION when 
 - [ ] Admin approves → therapist + client get email/SMS.
 - [ ] Video session joins from two devices; leave → rating box.
 - [ ] Forgot password email arrives.
+
+## Mobile API v1 (added 2026-10-09)
+- Run `php artisan migrate` — `2026_10_09_100000_make_api_tokens_work_with_uuid_users` makes Sanctum's `personal_access_tokens.tokenable_id` hold UUIDs (Mindwell user ids are UUIDs).
+- **Do not** run `php artisan install:api` or `php artisan vendor:publish --tag=sanctum-migrations` later: they add a second "create personal_access_tokens" migration that fails with "table already exists". The API is already installed (`routes/api.php`, Sanctum).
+- The app talks to `https://<your-domain>/api/v1`. Production must be HTTPS.
+- App sign-ins expire after 90 days and are revoked when the password is reset or changed on the website, or an admin sets a temporary password.
+- Postman collection for testing: `docs/Mindwell-API-v1.postman_collection.json`.

@@ -64,6 +64,12 @@ Route::view('/urgent-help', 'urgent-help')->name('urgent-help');
 Route::view('/privacy', 'legal.privacy')->name('privacy');
 Route::view('/terms', 'legal.terms')->name('terms');
 
+// Receipt download for the mobile app (2026-10-09, Flutter stage 3): the app asks the API
+// for a link (GET api/v1/payments/{id}/receipt-link, signed in), which is a SIGNED URL that
+// works for 10 minutes only, so the phone's browser can download the PDF without a login.
+Route::get('/r/{transaction}', [\App\Http\Controllers\Api\V1\PaymentController::class, 'signedReceipt'])
+    ->middleware(['signed', 'throttle:20,1'])->name('receipts.signed');
+
 Route::middleware('guest')->group(function () {
     Route::get('/register', [AuthController::class, 'showRegister'])->name('register');
     Route::post('/register', [AuthController::class, 'register']);

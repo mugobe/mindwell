@@ -20,9 +20,12 @@ class EnsureLegalAccepted
         $user = $request->user();
 
         if ($user && $user->role !== 'admin' && ! $user->hasAcceptedCurrentLegal()
-            && ! $request->routeIs('consent.show', 'consent.accept', 'logout', 'password.change', 'password.change.update')) {
-            if ($request->expectsJson()) {
-                return response()->json(['message' => 'Please review and accept the updated terms first.'], 403);
+            && ! $request->routeIs('consent.show', 'consent.accept', 'logout', 'password.change', 'password.change.update',
+                // Mobile API (2026-10-09): the app can still read who you are, accept, change
+                // password and log out.
+                'api.v1.me', 'api.v1.consent', 'api.v1.me.password', 'api.v1.auth.logout')) {
+            if ($request->expectsJson() || $request->is('api/*')) {
+                return response()->json(['message' => 'Please review and accept the updated terms first.', 'code' => 'consent_required'], 403);
             }
 
             return redirect()->route('consent.show');
