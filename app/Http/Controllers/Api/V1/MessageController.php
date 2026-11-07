@@ -45,7 +45,7 @@ class MessageController extends Controller
                 return [
                     'therapist' => ApiPresenter::therapist($t),
                     'conversation_id' => $c?->id,
-                    'preview' => $last ? (($last->sender_role === 'client' ? 'You: ' : '').$last->body) : null,
+                    'preview' => $last ? (($last->sender_role === 'client' ? 'You: ' : '').$last->previewText()) : null,
                     'last_at' => ApiPresenter::date($c?->last_message_at),
                     'unread' => $c ? $c->unreadCountFor('client') : 0,
                     'can_send' => ChatConversation::canTalk($profileId, $t->id),

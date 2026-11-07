@@ -6,6 +6,8 @@ use App\Models\AuditLog;
 use App\Models\PaymentTransaction;
 use App\Models\TherapySession;
 use App\Services\FlutterwaveClient;
+use App\Services\MarzPayClient;
+use App\Services\MarzPayException;
 use App\Services\Receipts;
 use App\Services\Vouchers;
 use Illuminate\Http\JsonResponse;
@@ -41,6 +43,11 @@ use Throwable;
  * tx_ref (which WE embedded in the redirect_url when initiating the charge) — the
  * real outcome always comes from calling FlutterwaveClient::verifyCharge() fresh,
  * exactly like webhook() does. The two entry points are fully symmetric here.
+ *
+ * MarzPay (2026-11-02): payments started with PAYMENT_GATEWAY=marzpay go through the
+ * same callback()/waiting()/checkForApi()/finalize() steps. Only the "ask the service
+ * what happened" step differs (verify()), and MarzPay's own server-to-server callback
+ * is marzpayWebhook(). The class keeps its old name so no route or app call changes.
  */
 class FlutterwavePaymentController extends Controller
 {
@@ -74,21 +81,21 @@ class FlutterwavePaymentController extends Controller
         }
 
         try {
-            $verified = app(FlutterwaveClient::class)->verifyCharge($transaction->flw_transaction_id);
+            $verified = $this->verify($transaction);
         } catch (Throwable $e) {
-            Log::warning('Flutterwave verify failed on callback', ['tx_ref' => $txRef, 'error' => $e->getMessage()]);
+            Log::warning('Payment verify failed on callback', ['tx_ref' => $txRef, 'gateway' => $transaction->gateway, 'error' => $e->getMessage()]);
 
             // Back to the waiting page, not checkout — the charge itself may be fine;
             // it's only OUR check that failed, and a new payment from checkout could
             // end up charging the client twice.
-            return redirect()->route('payments.flutterwave.waiting', $transaction)
-                ->with('error', "We couldn't reach Flutterwave to check this payment just now. We'll keep trying.");
+            return redirect()->route('payments.waiting', $transaction)
+                ->with('error', "We couldn't reach the payment service to check this payment just now. We'll keep trying.");
         }
 
         // Kept until the first real test confirms the field names verifyCharge()
         // assumes are correct — Flutterwave's own v4 docs don't publish a full worked
         // example of this response.
-        Log::info('Flutterwave verify response (callback)', ['tx_ref' => $txRef, 'verified' => $verified]);
+        Log::info('Payment verify response (callback)', ['tx_ref' => $txRef, 'gateway' => $transaction->gateway, 'verified' => $verified]);
 
         $outcome = $this->classifyStatus($verified);
 
@@ -96,14 +103,20 @@ class FlutterwavePaymentController extends Controller
             // Not a failure — the client just hasn't approved it on their phone yet (or
             // Mobile Money is still processing). Leave the transaction as-is so the
             // waiting page's next check, or an eventual webhook, can pick it up.
-            return redirect()->route('payments.flutterwave.waiting', $transaction);
+            // 2026-11-04: ...but only until the deadline. See closeUnpaid().
+            if ($transaction->status === 'pending' && now()->gte($transaction->waitDeadline())) {
+                $transaction->closeUnpaid('timed_out');
+
+                return $this->redirectToCheckout($transaction)->with('payment_failed', $this->failedNotice([], 'timed_out'));
+            }
+
+            return redirect()->route('payments.waiting', $transaction);
         }
 
         if ($outcome === 'failed' || ! $this->verificationMatches($transaction, $verified)) {
             $transaction->update(['status' => 'failed', 'meta' => $verified]);
 
-            return $this->redirectToCheckout($transaction)
-                ->with('error', 'Payment was not completed. You can try again below.');
+            return $this->redirectToCheckout($transaction)->with('payment_failed', $this->failedNotice($verified));
         }
 
         $result = $this->finalize($transaction, $verified, $request);
@@ -133,17 +146,115 @@ class FlutterwavePaymentController extends Controller
         }
 
         if ($transaction->status !== 'pending') {
-            return $this->redirectToCheckout($transaction)
-                ->with('error', 'Payment was not completed. You can try again below.');
+            return $this->redirectToCheckout($transaction)->with('payment_failed', $this->failedNotice($transaction->meta ?? [], $transaction->closedReason()));
         }
 
         return view('payments.waiting', [
+            'deadline' => $transaction->waitDeadline(),
+            'statusUrl' => route('payments.status', $transaction),
+            'cancelUrl' => route('payments.cancel', $transaction),
             'transaction' => $transaction,
             'instruction' => $transaction->meta['instruction'] ?? null,
-            'checkUrl' => route('payments.flutterwave.callback', ['tx_ref' => $transaction->tx_ref]),
+            'checkUrl' => route('payments.callback', ['tx_ref' => $transaction->tx_ref]),
             'autoCheck' => $transaction->created_at->gt(now()->subMinutes(10)),
             'canSimulate' => $this->simulationAllowed(),
         ]);
+    }
+
+    /**
+     * The waiting page asks this quietly every few seconds (2026-11-04) instead of
+     * reloading itself. Same rules as the app's status check, including the deadline.
+     * `next` is where the browser should go once there's an answer.
+     */
+    public function status(Request $request, PaymentTransaction $transaction): JsonResponse
+    {
+        abort_unless($transaction->client_profile_id === $request->user()->clientProfile?->id, 403);
+
+        $check = $this->checkForApi($transaction, $request);
+
+        return response()->json([
+            'state' => $check['state'],
+            'message' => $check['message'],
+            'seconds_left' => max(0, (int) now()->diffInSeconds($transaction->waitDeadline(), false)),
+            'next' => match ($check['state']) {
+                'succeeded' => route('payments.callback', ['tx_ref' => $transaction->tx_ref]),
+                'failed' => route('payments.waiting', $transaction),
+                default => null,
+            },
+        ]);
+    }
+
+    /** "Cancel payment" on the waiting page (2026-11-04). */
+    public function cancel(Request $request, PaymentTransaction $transaction): RedirectResponse
+    {
+        abort_unless($transaction->client_profile_id === $request->user()->clientProfile?->id, 403);
+
+        if ($transaction->processed_at) {
+            return $this->redirectAfter($transaction);
+        }
+
+        $transaction->closeUnpaid('client_cancelled');
+        AuditLog::record($request, 'payment.cancelled_by_client', 'Client stopped waiting for a Mobile Money payment.', ['payment_transaction_id' => $transaction->id]);
+
+        return $this->redirectToCheckout($transaction)->with('payment_failed', $this->failedNotice([], 'client_cancelled'));
+    }
+
+    /** The same for the app: POST api/v1/payments/{transaction}/cancel. */
+    public function cancelForApi(PaymentTransaction $transaction, ?Request $request): array
+    {
+        if ($transaction->processed_at) {
+            return ['state' => 'succeeded', 'message' => null];
+        }
+
+        $transaction->closeUnpaid('client_cancelled');
+        AuditLog::record($request, 'payment.cancelled_by_client', 'Client stopped waiting for a Mobile Money payment (app).', ['payment_transaction_id' => $transaction->id]);
+
+        return ['state' => 'failed', 'message' => $this->failedNotice([], 'client_cancelled')['text']];
+    }
+
+    /**
+     * One background check of an unfinished payment (2026-11-04), for
+     * mindwell:payments-reconcile. Returns what happened: completed, failed, closed,
+     * waiting, mismatch or unreachable.
+     */
+    public function reconcile(PaymentTransaction $transaction): string
+    {
+        if ($transaction->processed_at || ! $transaction->flw_transaction_id) {
+            return 'skipped';
+        }
+
+        try {
+            $verified = $this->verify($transaction);
+        } catch (Throwable $e) {
+            return 'unreachable';
+        }
+
+        $outcome = $this->classifyStatus($verified);
+
+        if ($outcome === 'succeeded') {
+            if (! $this->verificationMatches($transaction, $verified)) {
+                Log::warning('Reconcile: service says paid but amount/reference do not match', ['payment_transaction_id' => $transaction->id, 'verified' => $verified]);
+
+                return 'mismatch';
+            }
+            $this->finalize($transaction, $verified, null);
+
+            return 'completed';
+        }
+
+        if ($outcome === 'failed') {
+            $transaction->update(['status' => 'failed', 'meta' => array_merge(['closed_reason' => $transaction->closedReason()], $verified)]);
+
+            return 'failed';
+        }
+
+        if ($transaction->status === 'pending' && now()->gte($transaction->waitDeadline())) {
+            $transaction->closeUnpaid('timed_out');
+
+            return 'closed';
+        }
+
+        return 'waiting';
     }
 
     /**
@@ -175,27 +286,20 @@ class FlutterwavePaymentController extends Controller
 
         $outcome = $request->validate(['outcome' => ['required', 'in:approve,fail']])['outcome'];
 
-        Log::warning('SIMULATED Flutterwave outcome (local sandbox only)', [
+        Log::warning('SIMULATED payment outcome (sandbox only)', [
             'tx_ref' => $transaction->tx_ref,
+            'gateway' => $transaction->gateway,
             'outcome' => $outcome,
         ]);
 
-        // Mirrors the real GET /charges/{id} response fields this controller reads,
-        // plus a `simulated` flag so the stored meta makes it obvious afterwards.
-        $simulated = [
-            'id' => $transaction->flw_transaction_id,
-            'status' => $outcome === 'approve' ? 'succeeded' : 'failed',
-            'amount' => (float) $transaction->amount,
-            'currency' => $transaction->currency,
-            'reference' => $transaction->tx_ref,
-            'simulated' => true,
-        ];
+        // Mirrors the verify() fields this controller reads, plus a `simulated` flag so
+        // the stored meta makes it obvious afterwards.
+        $simulated = $this->simulatedResult($transaction, $outcome);
 
         if ($outcome === 'fail') {
             $transaction->update(['status' => 'failed', 'meta' => $simulated]);
 
-            return $this->redirectToCheckout($transaction)
-                ->with('error', 'Payment was not completed (simulated failure). You can try again below.');
+            return $this->redirectToCheckout($transaction)->with('payment_failed', $this->failedNotice($simulated));
         }
 
         $result = $this->finalize($transaction, $simulated, $request);
@@ -212,8 +316,92 @@ class FlutterwavePaymentController extends Controller
      */
     public function simulationAllowed(): bool
     {
-        return app()->environment('local')
-            && str_contains((string) config('flutterwave.base_url'), 'sandbox');
+        // Local and the staging test site (go-live 2026-10-31: "Allow Test mode on staging").
+        // Never production, and only while pointed at the Flutterwave sandbox.
+        // MarzPay (2026-11-02): its sandbox is a setting on the business account, not a
+        // separate address, so MARZPAY_SANDBOX=true stands in for the URL check.
+        // 2026-11-03: off unless PAYMENT_TEST_MODE=true, so testing the real flow never
+        // shows a way around paying.
+        if (! config('payments.test_mode') || ! app()->environment('local', 'staging')) {
+            return false;
+        }
+
+        return config('payments.gateway') === 'marzpay'
+            ? (bool) config('marzpay.sandbox')
+            : str_contains((string) config('flutterwave.base_url'), 'sandbox');
+    }
+
+    /** A made-up "the service said …" answer for the Test mode buttons. */
+    private function simulatedResult(PaymentTransaction $transaction, string $outcome): array
+    {
+        return [
+            'gateway' => $transaction->gateway,
+            'id' => $transaction->flw_transaction_id,
+            'status' => $outcome === 'approve' ? 'succeeded' : 'failed',
+            'amount' => (float) $transaction->amount,
+            'currency' => $transaction->currency,
+            'reference' => $this->expectedReference($transaction),
+            'simulated' => true,
+            'sandbox' => true,
+        ];
+    }
+
+    /**
+     * Asks the service that started this payment what happened to it. Both answers come
+     * back with status / amount / currency / reference, so the rest of this class
+     * doesn't care which service it was.
+     */
+    private function verify(PaymentTransaction $transaction, ?array $signedCallback = null): array
+    {
+        if ($transaction->gateway === 'marzpay') {
+            $isSandbox = (bool) ($transaction->meta['sandbox'] ?? false);
+
+            try {
+                $result = app(MarzPayClient::class)->collection($transaction->flw_transaction_id);
+            } catch (MarzPayException $e) {
+                if ($e->errorCode !== 'NOT_FOUND') {
+                    throw $e;
+                }
+
+                // MarzPay has no record of it. In sandbox that is normal (2026-11-03: the
+                // sandbox never keeps test payments). A SIGNED sandbox callback on
+                // local/staging is then the only word we'll get, so it is used as the
+                // answer there. Never in production, never for a live payment.
+                if ($signedCallback && $isSandbox && app()->environment('local', 'staging')
+                    && ($fromCallback = MarzPayClient::normalize($signedCallback))) {
+                    return array_merge($fromCallback, ['sandbox' => true, 'verified_by' => 'signed_sandbox_callback']);
+                }
+
+                // Otherwise: not an error the client should see, just "not confirmed yet".
+                // (Live, a payment MarzPay can't find is never treated as paid.)
+                Log::info('MarzPay has no record of this payment (yet)', ['payment_transaction_id' => $transaction->id, 'sandbox' => $isSandbox]);
+
+                return [
+                    'gateway' => 'marzpay',
+                    'status' => 'pending',
+                    'marzpay_status' => 'not_found',
+                    'reference' => $transaction->gateway_reference,
+                    'amount' => null,
+                    'currency' => $transaction->currency,
+                    'sandbox' => $isSandbox,
+                ];
+            }
+
+            // The status answer may not say "sandbox"; the payment remembers it from the start.
+            $result['sandbox'] = $result['sandbox'] || $isSandbox;
+
+            return $result;
+        }
+
+        return app(FlutterwaveClient::class)->verifyCharge($transaction->flw_transaction_id);
+    }
+
+    /** The reference WE gave the service: MarzPay's UUID, or Flutterwave's tx_ref. */
+    private function expectedReference(PaymentTransaction $transaction): string
+    {
+        return $transaction->gateway === 'marzpay'
+            ? (string) $transaction->gateway_reference
+            : (string) $transaction->tx_ref;
     }
 
     /**
@@ -269,6 +457,95 @@ class FlutterwavePaymentController extends Controller
     }
 
     /**
+     * MarzPay's callback (2026-11-02): POST /webhooks/marzpay, outside the login group
+     * and exempt from CSRF (bootstrap/app.php).
+     *
+     *  - Signed: when MARZPAY_WEBHOOK_SECRET is set, a missing or wrong
+     *    X-MarzPay-Signature is refused with 401.
+     *  - Never trusted on its own: the body only tells us WHICH payment to look at. The
+     *    outcome always comes from asking MarzPay again (verify()), like Flutterwave's.
+     *  - Idempotent: MarzPay may send the same one twice; finalize()'s processed_at
+     *    claim makes the second a no-op.
+     *  - Takes both shapes: the direct callback_url body and the dashboard's {data: …}.
+     */
+    public function marzpayWebhook(Request $request): JsonResponse
+    {
+        $raw = $request->getContent();
+        $secret = (string) config('marzpay.webhook_secret');
+        $signed = $secret !== '';
+
+        if ($signed && ! MarzPayClient::signatureValid($raw, $request->header('X-MarzPay-Signature'), $request->header('X-MarzPay-Timestamp'), $secret)) {
+            Log::warning('MarzPay callback refused: bad or missing signature', [
+                'has_signature' => $request->headers->has('X-MarzPay-Signature'),
+                'ip' => $request->ip(),
+            ]);
+            if (config('marzpay.log_payloads')) {
+                MarzPayClient::channel()->warning('Callback REFUSED (signature)', ['headers' => $this->marzHeaders($request), 'body' => $raw]);
+            }
+
+            return response()->json(['status' => 'unauthorized'], 401);
+        }
+
+        // For the admin Overview's payment service card ("last callback 4 min ago").
+        \Illuminate\Support\Facades\Cache::forever('marzpay.last_callback_at', now()->toIso8601String());
+
+        $body = json_decode($raw, true) ?: [];
+        $tx = MarzPayClient::findTransaction($body);
+        $reference = $tx['reference'] ?? null;
+        $uuid = $tx['uuid'] ?? null;
+
+        if (config('marzpay.log_payloads')) {
+            MarzPayClient::channel()->info('Callback received', ['signed' => $signed, 'headers' => $this->marzHeaders($request), 'body' => $body]);
+        }
+
+        $transaction = null;
+        if ($reference) {
+            $transaction = PaymentTransaction::where('gateway', 'marzpay')->where('gateway_reference', $reference)->first();
+        }
+        if (! $transaction && $uuid) {
+            $transaction = PaymentTransaction::where('gateway', 'marzpay')->where('flw_transaction_id', $uuid)->first();
+        }
+
+        if (! $transaction || $transaction->processed_at || ! $transaction->flw_transaction_id) {
+            return response()->json(['status' => 'ignored']);
+        }
+
+        try {
+            $verified = $this->verify($transaction, $signed ? $body : null);
+        } catch (Throwable $e) {
+            Log::warning('MarzPay re-check failed on callback', ['reference' => $reference, 'error' => $e->getMessage()]);
+
+            // Not a 2xx, so MarzPay can try again; the client's status checks keep
+            // going meanwhile.
+            return response()->json(['status' => 'error'], 503);
+        }
+
+        $outcome = $this->classifyStatus($verified);
+
+        if ($outcome === 'succeeded' && $this->verificationMatches($transaction, $verified)) {
+            $this->finalize($transaction, $verified, null);
+        } elseif ($outcome === 'failed') {
+            $transaction->update(['status' => 'failed', 'meta' => $verified]);
+        } elseif ($outcome === 'succeeded') {
+            Log::warning('MarzPay says completed but amount/currency/reference do not match', [
+                'payment_transaction_id' => $transaction->id,
+                'verified' => $verified,
+            ]);
+        }
+
+        return response()->json(['status' => 'ok']);
+    }
+
+    /** Only the headers worth seeing while testing; never Authorization or cookies. */
+    private function marzHeaders(Request $request): array
+    {
+        return collect($request->headers->all())
+            ->filter(fn ($v, $k) => str_starts_with($k, 'x-marzpay') || in_array($k, ['content-type', 'user-agent'], true))
+            ->map(fn ($v) => implode(',', $v))
+            ->all();
+    }
+
+    /**
      * A voucher covered the whole price (2026-10-07): there's nothing to charge, so the
      * Mobile Money step is skipped and the payment is completed straight away — same
      * finalize() path as a real payment (session/plan/renewal, receipt, redemption).
@@ -279,7 +556,7 @@ class FlutterwavePaymentController extends Controller
 
         $redirect = redirect()->route($result['route'], $result['params']);
 
-        return $redirect->with('status', $result['status_message'] ?? 'Your voucher covered the full price — nothing to pay.');
+        return $redirect->with('status', $result['status_message'] ?? 'Your voucher covers the full price. There is nothing to pay.');
     }
 
     /** The voucher-covered case without a redirect — shared with the mobile API (2026-10-09). */
@@ -308,31 +585,39 @@ class FlutterwavePaymentController extends Controller
             return ['state' => 'succeeded', 'message' => null];
         }
         if ($transaction->status !== 'pending') {
-            return ['state' => 'failed', 'message' => 'Payment was not completed. You can try again.'];
+            return ['state' => 'failed', 'message' => $this->failedNotice($transaction->meta ?? [], $transaction->closedReason())['text']];
         }
         if (! $transaction->flw_transaction_id) {
             return ['state' => 'failed', 'message' => 'Payment could not be confirmed. Please try again.'];
         }
 
         try {
-            $verified = app(FlutterwaveClient::class)->verifyCharge($transaction->flw_transaction_id);
+            $verified = $this->verify($transaction);
         } catch (Throwable $e) {
-            Log::warning('Flutterwave verify failed (API)', ['tx_ref' => $transaction->tx_ref, 'error' => $e->getMessage()]);
+            Log::warning('Payment verify failed (API)', ['tx_ref' => $transaction->tx_ref, 'gateway' => $transaction->gateway, 'error' => $e->getMessage()]);
 
             // Not a failure of the payment itself — keep waiting, never ask to pay again.
-            return ['state' => 'unreachable', 'message' => "We couldn't reach Flutterwave just now. We'll keep checking."];
+            return ['state' => 'unreachable', 'message' => "We couldn't reach the payment service just now. We'll keep checking."];
         }
 
         $outcome = $this->classifyStatus($verified);
 
         if ($outcome === 'pending') {
+            // 2026-11-04: MarzPay can keep a cancelled prompt "pending" for 10+ minutes
+            // while it re-sends it, so we stop at our own deadline.
+            if (now()->gte($transaction->waitDeadline())) {
+                $transaction->closeUnpaid('timed_out');
+
+                return ['state' => 'failed', 'message' => $this->failedNotice([], 'timed_out')['text']];
+            }
+
             return ['state' => 'pending', 'message' => null];
         }
 
         if ($outcome === 'failed' || ! $this->verificationMatches($transaction, $verified)) {
             $transaction->update(['status' => 'failed', 'meta' => $verified]);
 
-            return ['state' => 'failed', 'message' => 'Payment was not completed. You can try again.'];
+            return ['state' => 'failed', 'message' => $this->failedNotice($verified)['text']];
         }
 
         $result = $this->finalize($transaction, $verified, $request);
@@ -352,26 +637,57 @@ class FlutterwavePaymentController extends Controller
             return ['state' => 'failed', 'message' => 'Payment was not completed.'];
         }
 
-        Log::warning('SIMULATED Flutterwave outcome via API (local sandbox only)', ['tx_ref' => $transaction->tx_ref, 'outcome' => $outcome]);
+        Log::warning('SIMULATED payment outcome via API (sandbox only)', ['tx_ref' => $transaction->tx_ref, 'gateway' => $transaction->gateway, 'outcome' => $outcome]);
 
-        $simulated = [
-            'id' => $transaction->flw_transaction_id,
-            'status' => $outcome === 'approve' ? 'succeeded' : 'failed',
-            'amount' => (float) $transaction->amount,
-            'currency' => $transaction->currency,
-            'reference' => $transaction->tx_ref,
-            'simulated' => true,
-        ];
+        $simulated = $this->simulatedResult($transaction, $outcome);
 
         if ($outcome !== 'approve') {
             $transaction->update(['status' => 'failed', 'meta' => $simulated]);
 
-            return ['state' => 'failed', 'message' => 'Payment was not completed (simulated failure).'];
+            return ['state' => 'failed', 'message' => $this->failedNotice($simulated)['text']];
         }
 
         $result = $this->finalize($transaction, $simulated, $request);
 
         return ['state' => 'succeeded', 'message' => $result['status_message']];
+    }
+
+    /**
+     * What to tell a client whose payment didn't go through (2026-11-03, after the first
+     * live MarzPay test with a cancelled prompt). Plain words, the likely reason when the
+     * service gives one, and always that no money was taken.
+     *
+     * @return array{kind: string, reason: string, text: string}
+     */
+    private function failedNotice(array $verified, ?string $kind = null): array
+    {
+        $kind = $kind ?: MarzPayClient::failureKind($verified);
+
+        // 2026-11-04: we stopped waiting (the client cancelled, or no answer in time). The
+        // phone may still ask again, so tell them to decline it.
+        if (in_array($kind, ['client_cancelled', 'timed_out'], true)) {
+            $reason = $kind === 'client_cancelled'
+                ? 'You cancelled this payment.'
+                : 'We didn\'t get a confirmation from your phone in time.';
+            $after = 'No money has been taken. If your phone asks you to approve this payment again, decline it. If you do approve it, we\'ll still record it and let you know.';
+
+            return ['kind' => $kind, 'reason' => $reason, 'after' => $after, 'text' => $reason.' '.$after];
+        }
+
+        $reason = [
+            'insufficient' => 'There wasn\'t enough money on that Mobile Money account.',
+            'declined' => 'The payment was cancelled on the phone, or the PIN wasn\'t accepted.',
+            'timeout' => 'The request on your phone timed out before it was approved.',
+            'number' => 'That number couldn\'t receive a Mobile Money request.',
+            'mismatch' => 'We couldn\'t confirm this payment, so it wasn\'t used.',
+            'unknown' => 'The payment wasn\'t approved on your phone.',
+        ][$kind];
+
+        return [
+            'kind' => $kind,
+            'reason' => $reason,
+            'text' => $reason.' You have not been charged. You can try again.',
+        ];
     }
 
     /**
@@ -404,7 +720,7 @@ class FlutterwavePaymentController extends Controller
         $currency = $verified['currency'] ?? null;
         $amount = $verified['amount'] ?? null;
 
-        return $reference === $transaction->tx_ref
+        return $reference === $this->expectedReference($transaction)
             && $currency === $transaction->currency
             && $amount !== null
             && abs((float) $amount - (float) $transaction->amount) < 0.01;
@@ -435,7 +751,18 @@ class FlutterwavePaymentController extends Controller
             }
 
             $transaction->refresh();
-            $transaction->update(['meta' => $verified]);
+            $wasClosed = $transaction->closedReason();
+            $transaction->update(['meta' => array_filter(array_merge($verified, ['closed_reason' => $wasClosed]), fn ($v) => $v !== null)]);
+
+            // 2026-11-04: a payment confirmed AFTER the client stopped waiting (a re-sent
+            // prompt approved later) may find its session or plan already paid by a newer
+            // attempt. The money is real, so it's kept as received but not applied twice:
+            // admins are told to refund or credit it.
+            if ($dup = $this->alreadyPaidBy($transaction)) {
+                $transaction->update(['meta' => array_merge($transaction->meta ?? [], ['unapplied' => 'already_paid', 'duplicate_of' => $dup])]);
+
+                return ['route' => $transaction->purpose === 'session' ? 'sessions.history' : 'subscription.index', 'params' => [], 'status_message' => null, 'unapplied' => true];
+            }
 
             if ($transaction->purpose === 'session') {
                 return $this->finalizeSession($transaction, $request);
@@ -463,7 +790,40 @@ class FlutterwavePaymentController extends Controller
 
         app(Receipts::class)->issue($transaction);
 
+        if (! empty($result['unapplied'])) {
+            app(\App\Services\Notifier::class)->paymentNeedsAttention($transaction, \App\Models\User::where('role', 'admin')->get());
+            AuditLog::record($request, 'payment.unapplied', 'A late Mobile Money payment arrived for something already paid. It needs a refund or credit.', ['payment_transaction_id' => $transaction->id]);
+            $result['status_message'] = 'We received your payment of '.$transaction->currency.' '.number_format((float) $transaction->amount).', but this was already paid. Our team will refund or credit it and let you know.';
+        }
+
         return $result;
+    }
+
+    /** Another successful payment already covers what this one was for? Its id, or null. */
+    private function alreadyPaidBy(PaymentTransaction $transaction): ?string
+    {
+        if ($transaction->purpose === 'session') {
+            $session = $transaction->therapySession;
+            if (! $session || $session->status === 'pending_payment') {
+                return null;
+            }
+
+            // The session moved on without this payment (paid by a newer attempt, or cancelled).
+            return PaymentTransaction::where('therapy_session_id', $session->id)->where('id', '!=', $transaction->id)
+                ->where('status', 'successful')->value('id') ?? 'session-no-longer-waiting';
+        }
+
+        if (! $transaction->closedReason()) {
+            return null; // plans: only late (closed) payments are checked
+        }
+
+        return PaymentTransaction::where('client_profile_id', $transaction->client_profile_id)
+            ->where('purpose', 'subscription')->where('id', '!=', $transaction->id)
+            ->where('subscription_plan_id', $transaction->subscription_plan_id)
+            ->where('client_subscription_id', $transaction->client_subscription_id)
+            ->where('status', 'successful')
+            ->where('processed_at', '>=', $transaction->created_at->copy()->subMinutes(5))
+            ->value('id');
     }
 
     private function finalizeSession(PaymentTransaction $transaction, ?Request $request): array
@@ -483,7 +843,7 @@ class FlutterwavePaymentController extends Controller
             'entered_lobby_at' => $isSelfBooked ? null : now(),
         ]);
 
-        AuditLog::record($request, 'session.paid', 'Client paid for a session via Flutterwave Mobile Money.', [
+        AuditLog::record($request, 'session.paid', 'Client paid for a session via Mobile Money ('.($transaction->gateway === 'marzpay' ? 'MarzPay' : 'Flutterwave').').', [
             'therapy_session_id' => $session->id,
             'payment_transaction_id' => $transaction->id,
         ]);

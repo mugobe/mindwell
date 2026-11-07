@@ -265,7 +265,7 @@ class Notifier
                     array_values(array_filter([
                         'Your appointment with '.($therapist?->name ?? 'your therapist').' on '.$this->when($session->scheduled_at).' has been cancelled.',
                         ! empty($outcome['credit_returned']) ? 'The session credit has been added back to your plan.' : null,
-                        ! empty($outcome['refunded']) ? 'Your payment is being refunded — you will get a separate email about it.' : null,
+                        ! empty($outcome['refunded']) ? 'Your payment is being refunded. You will get a separate email about it.' : null,
                         'You can book another time whenever you are ready.',
                     ])),
                     'Book another time',
@@ -335,6 +335,100 @@ class Notifier
         );
     }
 
+    /** A late payment arrived for something already paid (2026-11-04): admins must refund or credit it. */
+    public function paymentNeedsAttention(\App\Models\PaymentTransaction $transaction, iterable $admins): void
+    {
+        $transaction->loadMissing('clientProfile.user');
+        $who = $transaction->clientProfile?->user?->name ?? 'A client';
+        foreach ($admins as $admin) {
+            $this->deliver($admin,
+                new MindwellNotice(
+                    'A payment needs a refund or credit',
+                    $this->hi($admin),
+                    [
+                        $who.' paid '.$transaction->currency.' '.number_format((float) $transaction->amount).' by Mobile Money for something that was already paid. This usually means they approved a repeated prompt after paying again.',
+                        'The money was received. Please refund it from the MarzPay dashboard and record the refund, or agree a credit with the client.',
+                    ],
+                    'Open payments',
+                    route('admin.payments.index'),
+                ),
+                null,
+            );
+        }
+    }
+
+    /** Therapist onboarding (2026-11-03): an application was sent in. Admins + a receipt for the applicant. */
+    public function applicationSubmitted(\App\Models\TherapistApplication $app, iterable $admins, bool $resubmitted = false): void
+    {
+        $app->loadMissing('user');
+        $applicant = $app->user;
+        $name = $applicant?->name ?? 'A therapist';
+
+        foreach ($admins as $admin) {
+            $this->deliver($admin,
+                new MindwellNotice(
+                    $resubmitted ? 'A therapist application was updated' : 'New therapist application',
+                    $this->hi($admin),
+                    [$name.($resubmitted ? ' has made the changes you asked for and sent their application back.' : ' has applied to join Mindwell as a therapist.').' Please review their licence, documents and references.'],
+                    'Review the application',
+                    route('admin.applications.show', $app),
+                ),
+                null,
+            );
+        }
+
+        if ($applicant) {
+            $this->deliver($applicant,
+                new MindwellNotice(
+                    'We have your application',
+                    $this->hi($applicant),
+                    [
+                        'Thank you for applying to join Mindwell. Our team will check your licence, documents and references.',
+                        'This usually takes a few working days. We\'ll email you as soon as there is news, and you can check progress at any time.',
+                    ],
+                    'See your application',
+                    route('apply.status'),
+                ),
+                null,
+            );
+        }
+    }
+
+    /** Therapist onboarding (2026-11-03): approved, changes requested, or declined. */
+    public function applicationDecided(\App\Models\TherapistApplication $app): void
+    {
+        $app->loadMissing('user');
+        $applicant = $app->user;
+        if (! $applicant) {
+            return;
+        }
+
+        $note = $app->decision_note ? 'Note from the team: '.$app->decision_note : null;
+
+        [$subject, $lines, $action, $url, $sms] = match ($app->status) {
+            \App\Models\TherapistApplication::APPROVED => [
+                'Welcome to Mindwell',
+                array_values(array_filter(['Your application has been approved. Your therapist portal is open.', 'Next, set your availability so clients can book you.', $note])),
+                'Set your availability', route('therapist.availability.index'),
+                'Mindwell: your therapist application is approved. Log in to set your availability.',
+            ],
+            \App\Models\TherapistApplication::CHANGES => [
+                'About your Mindwell application',
+                array_values(array_filter(['Thank you for applying. Before we can finish our review, we need a few changes to your application.', $note, 'Your answers are saved, so you only need to change what the note asks for, then send it again.'])),
+                'Update your application', route('apply.start'),
+                'Mindwell: we need a few changes to your therapist application. Please check your email.',
+            ],
+            default => [
+                'About your Mindwell application',
+                array_values(array_filter(['Thank you for applying to Mindwell. After reviewing your application, we are not able to approve it at this time.', $note])),
+                'See your application', route('apply.status'),
+                null,
+            ],
+        };
+
+        $this->deliver($applicant, new MindwellNotice($subject, $this->hi($applicant), $lines, $action, $url), $sms);
+    }
+
     /** A booking waiting for approval was declined by admin/routing. */
     public function bookingDeclined(TherapySession $session): void
     {
@@ -392,7 +486,7 @@ class Notifier
             if ($which === '24h') {
                 $lines = ['A reminder of your appointment with '.$otherName.' '.$this->relative($at).'.'];
                 if ($role === 'client') {
-                    $lines[] = "When the time comes, find a private, quiet spot — headphones help. You can join from "
+                    $lines[] = "When the time comes, find a quiet, private place. Headphones help. You can join from "
                         .config('mindwell.video_join_early_minutes', 10).' minutes before.';
                 }
                 $mail = new MindwellNotice('Reminder: your appointment '.$this->relativeShort($at), $this->hi($to), $lines,
@@ -523,6 +617,46 @@ class Notifier
     // ---- Progress check-ins (added 2026-10-03).
 
     /** Two weeks (plus a couple of days) since their last check-in. Client only. */
+    /**
+     * The therapist added a goal, homework or a resource for the client (2026-11-07).
+     * Discreet, like every Mindwell email: it says something is waiting, not what.
+     */
+    public function careAdded(\App\Models\ClientProfile $client, string $what): void
+    {
+        $user = $client->user;
+        if (! $user) {
+            return;
+        }
+        $line = match ($what) {
+            'homework' => 'Your therapist has given you something to work on before your next session.',
+            'resource' => 'Your therapist has sent you something to read, watch or listen to.',
+            default => 'Your therapist has added a goal for you to work on together.',
+        };
+        $this->deliver($user,
+            new MindwellNotice('Something new from your therapist', $this->hi($user), [$line, 'You will find it in My therapy.'], 'Open My therapy', route('care.index')),
+            null,
+        );
+    }
+
+    /** Optional journal reminder (2026-11-07), email only. Discreet: no mood, no text. */
+    public function journalReminder(User $client, string $slot): void
+    {
+        $evening = $slot === 'evening';
+        $this->deliver($client,
+            new MindwellNotice(
+                $evening ? 'Anything you want to write down today?' : 'How are you feeling this morning?',
+                $this->hi($client),
+                [$evening
+                    ? 'A few words about your day can help you and your therapist notice what helps. There is no right way to do it.'
+                    : 'One tap in your journal is enough. It helps you see how your weeks are going.',
+                    'You asked for this reminder. You can change or turn it off in Settings, Notifications.'],
+                $evening ? 'Open my journal' : 'Check in',
+                route('journal.index'),
+            ),
+            null,
+        );
+    }
+
     public function checkInReady(User $client): void
     {
         $this->deliver($client,
@@ -585,7 +719,7 @@ class Notifier
             new MindwellNotice('How was your Mindwell appointment?', $this->hi($client), [
                 'We\'d love to hear how your appointment with '.($session->therapistProfile?->user?->name ?? 'your therapist')
                     .' on '.$session->scheduled_at->format('l, M j').' went.',
-                'It takes a few seconds. Only the Mindwell team reads your comments — your therapist doesn\'t see them.',
+                'It takes a few seconds. Only the Mindwell team reads your comments. Your therapist does not see them.',
             ], 'Share my feedback', route('sessions.rate', $session)),
             null,
         );
@@ -662,7 +796,7 @@ class Notifier
                 ],
                 null,
                 null,
-                'Please keep access codes private — anyone with a code can use the place.',
+                'Please keep access codes private. Anyone with a code can get in.',
             ));
 
             return true;
@@ -685,7 +819,7 @@ class Notifier
         foreach ($admins as $admin) {
             $this->deliver($admin,
                 new MindwellNotice('Employer contract ending: '.$employer->company_name, $this->hi($admin), [
-                    $employer->company_name.'\'s Mindwell contract ends on '.$employer->contract_renewal_date->format('l, j F Y').' — in '.$days.' '.($days === 1 ? 'day' : 'days').'.',
+                    $employer->company_name.'\'s Mindwell contract ends on '.$employer->contract_renewal_date->format('l, j F Y').', in '.$days.' '.($days === 1 ? 'day' : 'days').'.',
                     'After that date their staff can no longer book with their employer benefit. Contact '.($employer->contact_name ?: 'the employer').($employer->contact_email ? ' ('.$employer->contact_email.')' : '').' about renewing, then update the renewal date.',
                 ], 'Open employer', route('admin.employers.show', $employer)),
                 null,

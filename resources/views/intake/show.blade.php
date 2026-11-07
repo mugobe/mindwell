@@ -14,16 +14,16 @@
     </div>
 
     <div class="mw-wizard-intro">
-        <h1 style="font-size:19px;font-weight:800;margin-bottom:6px;color:var(--ink-900);">A few questions before we match you</h1>
+        <h1 style="font-size:19px;font-weight:800;margin-bottom:6px;color:var(--ink-900);">{{ ($forBooking ?? false) ? 'A few questions before your first session' : 'A few questions before we match you' }}</h1>
         <p style="font-size:12.5px;color:var(--ink-500);line-height:1.6;">
             @if (count($aboutSections))
                 {{-- Richer intake (2026-10-09, roadmap 63). --}}
-                First a little about you — every one of these can be skipped. Then 16 short questions (PHQ-9 and GAD-7),
+                First, a little about you. You can skip any of these. Then 16 short questions (PHQ-9 and GAD-7),
                 the same screeners licensed therapists use everywhere; answer those based on <b>the last 2 weeks</b>.
                 There are no wrong answers. Only your therapist and the Mindwell care team see what you share.
             @else
                 These are the same standardized screeners (PHQ-9 and GAD-7) licensed therapists use everywhere. There are
-                no wrong answers — this just helps us find the right therapist for you and flag if you need support
+                no wrong answers. This helps us find the right therapist for you and flag if you need support
                 right away. Answer based on <b>the last 2 weeks</b>.
             @endif
         </p>
@@ -78,7 +78,7 @@
 
     <noscript>
         <p style="font-size:11px;color:var(--ink-300);margin-top:14px;">
-            JavaScript is off, so every question is shown on one page — just answer them all and submit at the bottom.
+            JavaScript is off, so every question is shown on one page. Answer them all, then submit at the bottom.
         </p>
         <button type="submit" form="mw-intake-form" class="btn primary block" style="margin-top:8px;border-radius:999px;">Continue</button>
     </noscript>

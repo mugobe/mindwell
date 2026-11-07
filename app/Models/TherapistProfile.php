@@ -65,6 +65,12 @@ class TherapistProfile extends Model
         return $this->hasMany(GroupSession::class, 'therapist_id');
     }
 
+    /** The onboarding application this profile came from (2026-11-03), if any. */
+    public function application(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(TherapistApplication::class);
+    }
+
     public function matchingResults(): HasMany
     {
         return $this->hasMany(MatchingResult::class, 'therapist_id');

@@ -26,7 +26,7 @@ class SessionRatingController extends Controller
         $this->authorizeClient($request, $therapySession);
 
         if ($therapySession->rating()->exists()) {
-            return redirect()->route('dashboard')->with('status', "Thanks — you've already given feedback on that session.");
+            return redirect()->route('dashboard')->with('status', "Thank you. You have already given feedback on that session.");
         }
 
         $therapySession->loadMissing('therapistProfile.user');
@@ -58,7 +58,7 @@ class SessionRatingController extends Controller
             ]);
         } catch (UniqueConstraintViolationException) {
             // Already rated (double click, or the email and the room both used).
-            return $this->done($request, "Thanks — you've already given feedback on that session.");
+            return $this->done($request, "Thank you. You have already given feedback on that session.");
         }
 
         if (! $skipped && $rating->rating <= SessionRating::LOW) {
@@ -69,7 +69,7 @@ class SessionRatingController extends Controller
             }
         }
 
-        return $this->done($request, $skipped ? 'No problem — we won\'t ask about that session again.' : 'Thank you for your feedback.');
+        return $this->done($request, $skipped ? 'No problem. We will not ask about that session again.' : 'Thank you for your feedback.');
     }
 
     private function done(Request $request, string $message): JsonResponse|RedirectResponse

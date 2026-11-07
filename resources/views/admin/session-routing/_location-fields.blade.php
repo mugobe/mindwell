@@ -13,5 +13,5 @@
 </select>
 <textarea name="location_details" class="mw-field" rows="2" maxlength="1000" style="font-size:12.5px;" placeholder="Room / floor, or another place if not a venue above">{{ $session->location_details }}</textarea>
 @if ($venues->isEmpty())
-    <div style="font-size:11px;color:var(--ink-300);">No venues yet — type the place, or <a href="{{ route('admin.venues.create') }}">add a venue</a>.</div>
+    <div style="font-size:11px;color:var(--ink-300);">No venues yet. Type the place, or <a href="{{ route('admin.venues.create') }}">add a venue</a>.</div>
 @endif

@@ -86,6 +86,7 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::get('payments', [V1\PaymentController::class, 'index'])->name('payments.index');
         Route::get('payments/{transaction}', [V1\CheckoutController::class, 'status'])->name('payments.status');
         Route::post('payments/{transaction}/simulate', [V1\CheckoutController::class, 'simulate'])->name('payments.simulate');
+        Route::post('payments/{transaction}/cancel', [V1\CheckoutController::class, 'cancel'])->name('payments.cancel');
         Route::get('payments/{transaction}/receipt', [V1\PaymentController::class, 'receipt'])->name('payments.receipt');
         Route::get('payments/{transaction}/receipt-link', [V1\PaymentController::class, 'receiptLink'])->name('payments.receipt-link');
 
@@ -104,6 +105,14 @@ Route::prefix('v1')->name('api.v1.')->group(function () {
         Route::post('messages/with/{therapist}', [V1\MessageController::class, 'open'])->name('messages.open');
         Route::get('conversations/{conversation}/poll', [WebMessages::class, 'poll'])->name('messages.poll');
         Route::post('conversations/{conversation}/messages', [WebMessages::class, 'send'])->middleware('throttle:30,1,api-msg')->name('messages.send');
+
+        // Care features (2026-11-07): My therapy, resources, goals, homework.
+        Route::get('my-therapy', [V1\CareController::class, 'myTherapy'])->name('care.index');
+        Route::get('resources', [V1\CareController::class, 'resources'])->name('resources.index');
+        Route::get('resources/{resource}', [V1\CareController::class, 'resource_'])->name('resources.show');
+        Route::post('goals/{goal}/progress', [V1\CareController::class, 'goalProgress'])->name('goals.progress');
+        Route::get('homework/{homework}', [V1\CareController::class, 'homeworkShow'])->name('homework.show');
+        Route::post('homework/{homework}/reply', [V1\CareController::class, 'homeworkReply'])->middleware('throttle:20,1,api-hw')->name('homework.reply');
 
         // Journal
         Route::get('journal', [V1\JournalController::class, 'index'])->name('journal.index');

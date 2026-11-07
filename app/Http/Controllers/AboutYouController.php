@@ -48,7 +48,7 @@ class AboutYouController extends Controller
         // saveAbout keeps answers for sections that are switched off now.
         IntakeController::saveAbout($request, $profile, $validated, $existing?->source === 'intake' ? 'intake' : 'later');
 
-        return redirect()->route('dashboard')->with('status', 'Thank you — your therapist will see this before your next session.');
+        return redirect()->route('dashboard')->with('status', 'Thank you. Your therapist will see this before your next session.');
     }
 
     public function dismiss(Request $request): RedirectResponse

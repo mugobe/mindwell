@@ -62,7 +62,13 @@ class MeController extends Controller
             'phone' => ['nullable', 'string', 'max:20', UgandaPhone::rule()],
             'notify_email' => ['nullable', 'boolean'],
             'notify_sms' => ['nullable', 'boolean'],
+            'journal_reminders' => ['nullable', 'in:off,'.implode(',', \App\Services\JournalReminders::CHOICES)],
         ]);
+
+        // 2026-11-07: only when sent, so older app versions don't switch reminders off.
+        if ($request->has('journal_reminders')) {
+            $request->user()->forceFill(['journal_reminders' => ($validated['journal_reminders'] ?? 'off') === 'off' ? null : $validated['journal_reminders']])->save();
+        }
 
         $request->user()->update([
             'phone' => filled($validated['phone'] ?? null) ? UgandaPhone::normalize($validated['phone']) : null,

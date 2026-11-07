@@ -89,14 +89,14 @@ class Receipts
         $amount = $transaction->currency.' '.number_format((float) $transaction->amount, 0);
 
         $lines = [
-            "Thank you — we've received your payment.",
+            "Thank you. We have received your payment.",
             'Receipt: '.$transaction->receipt_number,
-            $transaction->receiptDescription().' — '.$amount,
+            $transaction->receiptDescription().': '.$amount,
             'Paid on '.$paidAt->format('M j, Y').($transaction->method_label ? ' by '.$transaction->method_label : '').'.',
         ];
 
         if ($transaction->isTest()) {
-            $lines[] = 'This was a test payment — no real money was taken.';
+            $lines[] = 'This was a test payment. No real money was taken.';
         }
 
         $firstName = trim(explode(' ', trim((string) $user->name))[0] ?? '');

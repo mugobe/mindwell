@@ -32,7 +32,7 @@
     <a class="mw-kpi" href="{{ route('admin.ratings.index', ['low' => 1]) }}">
         <div class="k">Low (1–2 stars)</div>
         <div class="v" style="{{ $overall['low'] ? 'color:#C0392B;' : '' }}">{{ $overall['low'] }}</div>
-        <div class="d">{{ $overall['low'] ? 'Worth a look — see them' : 'None so far' }}</div>
+        <div class="d">{{ $overall['low'] ? 'Worth a look' : 'None so far' }}</div>
     </a>
     <div class="mw-kpi">
         <div class="k">Response rate</div>

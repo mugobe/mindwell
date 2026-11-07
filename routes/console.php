@@ -10,3 +10,7 @@ Artisan::command('inspire', function () {
 
 
 Schedule::command('mindwell:notify')->everyFiveMinutes();
+
+// Unfinished Mobile Money payments (2026-11-04): late approvals, closed browsers, missed
+// callbacks. See App\Console\Commands\PaymentsReconcile.
+Schedule::command('mindwell:payments-reconcile')->everyMinute()->withoutOverlapping();

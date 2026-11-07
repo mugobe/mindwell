@@ -41,13 +41,13 @@
     <p>Video sessions are not recorded.</p>
 
     <h2>5. When we may share without your permission</h2>
-    <p>Only where the law requires it, or where there is a serious and immediate risk to your life or someone else's — for example, contacting emergency services. Your therapist will explain these limits of confidentiality.</p>
+    <p>Only where the law requires it, or where there is a serious and immediate risk to your life or someone else's, for example by contacting emergency services. Your therapist will explain these limits of confidentiality.</p>
 
     <h2>6. How long we keep it</h2>
     <p>We keep clinical records for as long as required for professional and legal purposes, and other information for as long as your account is active or the law requires. [Retention periods to be confirmed by Dr. Ntabade.]</p>
 
     <h2>7. Your rights</h2>
-    <p>Under the Data Protection and Privacy Act you can ask to see the personal data we hold about you, ask us to correct it, object to certain uses, and ask us to delete it where we are not required to keep it. You can withdraw your consent at any time — this may mean we can no longer provide counselling. To make a request, contact us{{ $contact ? ' at '.$contact : '' }}. You can also complain to the Personal Data Protection Office.</p>
+    <p>Under the Data Protection and Privacy Act you can ask to see the personal data we hold about you, ask us to correct it, object to certain uses, and ask us to delete it where we are not required to keep it. You can withdraw your consent at any time. This may mean we can no longer provide counselling. To make a request, contact us{{ $contact ? ' at '.$contact : '' }}. You can also complain to the Personal Data Protection Office.</p>
 
     <h2>8. Security</h2>
     <p>We use encrypted connections (HTTPS), encrypted passwords, access controls and audit logs. No system is perfectly secure; if a breach affects your data we will tell you and the regulator as the law requires.</p>

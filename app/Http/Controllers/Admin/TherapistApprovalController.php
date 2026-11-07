@@ -15,12 +15,15 @@ class TherapistApprovalController extends Controller
 {
     public function index(): View
     {
-        $pending = TherapistProfile::with('user')->where('credentials_verified', false)->get();
+        // Onboarding (2026-11-03): new applicants are reviewed in Applications; this list keeps
+        // only older sign-ups from before the application existed.
+        $pending = TherapistProfile::with('user')->where('credentials_verified', false)->whereDoesntHave('application')->get();
+        $applications = \App\Models\TherapistApplication::where('status', 'submitted')->count();
         $verified = TherapistProfile::with('user')->where('credentials_verified', true)->get();
         // Licence changes therapists have asked for from their profile (2026-10-06).
         $licenseChanges = TherapistProfile::with('user')->whereNotNull('license_change_requested_at')->get();
 
-        return view('admin.therapists.index', compact('pending', 'verified', 'licenseChanges'));
+        return view('admin.therapists.index', compact('pending', 'verified', 'licenseChanges', 'applications'));
     }
 
     public function approve(Request $request, TherapistProfile $therapist): RedirectResponse

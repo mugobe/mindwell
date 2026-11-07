@@ -76,7 +76,7 @@ class ProgressController extends Controller
     {
         $status = CheckIn::statusFor($request->user()->clientProfile);
         if (! $status['eligible']) {
-            return response()->json(['message' => 'Start with your first assessment — check-ins come after that.', 'code' => 'intake_first'], 409);
+            return response()->json(['message' => 'Please start with your first assessment. Check-ins come after that.', 'code' => 'intake_first'], 409);
         }
         if (! $status['available']) {
             return response()->json(['message' => 'Your next check-in opens on '.$status['available_at']->format('D j M').'.', 'code' => 'not_yet', 'available_at' => ApiPresenter::date($status['available_at'])], 409);
@@ -103,7 +103,7 @@ class ProgressController extends Controller
 
         return response()->json([
             'outcome' => $checkIn->self_harm ? 'crisis' : 'saved',
-            'message' => $checkIn->self_harm ? null : 'Thank you — your check-in is saved.',
+            'message' => $checkIn->self_harm ? null : 'Thank you. Your check-in is saved.',
         ], 201);
     }
 

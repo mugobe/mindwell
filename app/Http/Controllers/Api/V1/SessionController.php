@@ -163,7 +163,7 @@ class SessionController extends Controller
         $req = $changes->request($request, $therapySession, $request->user(), 'client', $data['type'], $newAt, $data['reason'] ?? null);
 
         return response()->json([
-            'message' => 'Request sent. Our team will confirm it and let you know — your session stays as it is until then.',
+            'message' => 'Request sent. Our team will confirm it and let you know. Your session stays as it is until then.',
             'change_request_id' => $req->id,
         ], 201);
     }
@@ -195,6 +195,10 @@ class SessionController extends Controller
             'opens_at' => ApiPresenter::date($access['opens_at']),
             'closes_at' => ApiPresenter::date($access['closes_at']),
             'ends_at' => ApiPresenter::date($therapySession->plannedEndAt()),
+            // For the app's calm waiting room (2026-11-06): date block and "Starts in" countdown.
+            'starts_at' => ApiPresenter::date($access['starts_at']),
+            'starts_in_seconds' => max(0, (int) round(now()->diffInSeconds($access['starts_at'], false))),
+            'duration_minutes' => (int) ($therapySession->duration_minutes ?: config('mindwell.session_duration_minutes')),
             'therapist_name' => $therapySession->therapistProfile?->user?->name,
             // The client's own in-room notepad (their private journal entry for this
             // session), so the app can show what they already wrote — added for the

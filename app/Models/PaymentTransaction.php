@@ -37,6 +37,11 @@ class PaymentTransaction extends Model
         'subscription_plan_id',
         'client_subscription_id',
         'tx_ref',
+        // MarzPay alongside Flutterwave (2026-11-02): which service started it, and the
+        // UUID v4 reference we sent MarzPay. flw_transaction_id holds the service's own
+        // transaction id for either one.
+        'gateway',
+        'gateway_reference',
         'flw_transaction_id',
         'status',
         'amount',
@@ -171,8 +176,58 @@ class PaymentTransaction extends Model
             return false; // no Flutterwave charge involved, so sandbox mode is irrelevant
         }
 
-        return (bool) ($this->meta['simulated'] ?? false)
-            || str_contains((string) config('flutterwave.base_url'), 'sandbox');
+        if ($this->meta['simulated'] ?? false) {
+            return true;
+        }
+
+        // MarzPay's sandbox is an account setting, so it's remembered per payment.
+        if ($this->gateway === 'marzpay') {
+            return (bool) ($this->meta['sandbox'] ?? config('marzpay.sandbox'));
+        }
+
+        return str_contains((string) config('flutterwave.base_url'), 'sandbox');
+    }
+
+    /** When the client stops waiting on the "approve on your phone" page (2026-11-04). */
+    public function waitDeadline(): \Illuminate\Support\Carbon
+    {
+        return $this->created_at->copy()->addMinutes(max(1, (int) config('payments.wait_minutes', 3)));
+    }
+
+    /**
+     * Stops waiting for this payment without calling it failed at the service
+     * (2026-11-04): the client cancelled, or the deadline passed. The service may still
+     * confirm it later (a re-sent prompt approved), and the background check will then
+     * still record it. See PaymentReconcile.
+     *
+     * @param  'client_cancelled'|'timed_out'  $reason
+     */
+    public function closeUnpaid(string $reason): void
+    {
+        if ($this->processed_at || $this->status !== 'pending') {
+            return;
+        }
+
+        $this->update([
+            'status' => 'cancelled',
+            'meta' => array_merge($this->meta ?? [], ['closed_reason' => $reason, 'closed_at' => now()->toIso8601String()]),
+        ]);
+    }
+
+    public function closedReason(): ?string
+    {
+        return $this->meta['closed_reason'] ?? null;
+    }
+
+    /** Which service took the money (2026-11-03), for admin lists and filters. */
+    public function serviceLabel(): string
+    {
+        return match (true) {
+            $this->isCash() => 'Cash',
+            $this->isVoucherFree() || $this->gateway === 'voucher' => 'Voucher',
+            $this->gateway === 'marzpay' => 'MarzPay',
+            default => 'Flutterwave',
+        };
     }
 
     /** Recorded by an admin as paid in cash (2026-10-06). */

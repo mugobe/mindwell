@@ -31,7 +31,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // - Flutterwave's server-to-server webhook can't send a CSRF token.
         // - Security headers on every response.
         $middleware->trustProxies(at: '*');
-        $middleware->validateCsrfTokens(except: ['webhooks/flutterwave']);
+        $middleware->validateCsrfTokens(except: ['webhooks/flutterwave', 'webhooks/marzpay']);
         $middleware->append(\App\Http\Middleware\SecurityHeaders::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

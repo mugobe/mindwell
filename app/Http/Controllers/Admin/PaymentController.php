@@ -32,6 +32,7 @@ class PaymentController extends Controller
             'month' => ['nullable', 'date_format:Y-m'],
             'status' => ['nullable', 'in:successful,pending,failed,cancelled'],
             'kind' => ['nullable', 'in:session,plan,renewal'],
+            'service' => ['nullable', 'in:marzpay,flutterwave,voucher,cash'],
         ]);
 
         $month = isset($validated['month'])
@@ -49,6 +50,7 @@ class PaymentController extends Controller
         $payments = $filtered(PaymentTransaction::query())
             ->whereBetween('created_at', [$month, $monthEnd])
             ->when($validated['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
+            ->when($validated['service'] ?? null, fn ($q, $service) => self::byService($q, $service))
             ->with('clientProfile.user', 'therapySession.therapistProfile.user', 'subscriptionPlan')
             ->latest()
             ->paginate(30)
@@ -92,7 +94,18 @@ class PaymentController extends Controller
             ->where('created_at', '>=', now()->subDays(14))
             ->count();
 
+        // MarzPay's fees on this month's paid MarzPay payments (2026-11-03): stored with each
+        // confirmed payment (meta.charge). Flutterwave doesn't report one, so it's left out.
+        $marzFees = (float) PaymentTransaction::where('status', 'successful')->where('gateway', 'marzpay')
+            ->whereBetween('created_at', [$month, $monthEnd])->get(['meta'])
+            ->sum(fn ($p) => (float) ($p->meta['charge'] ?? 0));
+
+        $notCompleted = PaymentTransaction::whereIn('status', ['failed', 'cancelled'])
+            ->whereBetween('created_at', [$month, $monthEnd])->count();
+
         return view('admin.payments.index', [
+            'marzFees' => $marzFees,
+            'notCompleted' => $notCompleted,
             'payments' => $payments,
             'summary' => $summary,
             'trend' => $trend,
@@ -101,6 +114,24 @@ class PaymentController extends Controller
             'filters' => $validated,
             'currency' => config('flutterwave.currency'),
         ]);
+    }
+
+    /**
+     * Which service took the money (2026-11-03): MarzPay, Flutterwave, a voucher that
+     * covered everything, or cash recorded by an admin. Same split as
+     * PaymentTransaction::serviceLabel().
+     */
+    public static function byService($q, string $service)
+    {
+        $cash = fn ($w) => $w->where('meta->cash', true);
+        $voucher = fn ($w) => $w->where('gateway', 'voucher')->orWhere(fn ($v) => $v->where('amount', '<=', 0)->whereNotNull('voucher_id'));
+
+        return match ($service) {
+            'cash' => $q->where($cash),
+            'voucher' => $q->where($voucher),
+            'marzpay' => $q->where('gateway', 'marzpay'),
+            'flutterwave' => $q->where('gateway', 'flutterwave')->where('amount', '>', 0)->whereNot($cash),
+        };
     }
 
     /**
@@ -113,6 +144,7 @@ class PaymentController extends Controller
             'month' => ['nullable', 'date_format:Y-m'],
             'status' => ['nullable', 'in:successful,pending,failed,cancelled'],
             'kind' => ['nullable', 'in:session,plan,renewal'],
+            'service' => ['nullable', 'in:marzpay,flutterwave,voucher,cash'],
         ]);
 
         $month = isset($validated['month'])
@@ -121,6 +153,7 @@ class PaymentController extends Controller
 
         $rows = PaymentTransaction::whereBetween('created_at', [$month, $month->copy()->endOfMonth()])
             ->when($validated['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
+            ->when($validated['service'] ?? null, fn ($q, $service) => self::byService($q, $service))
             ->when($validated['kind'] ?? null, fn ($q, $kind) => match ($kind) {
                 'session' => $q->where('purpose', 'session'),
                 'plan' => $q->where('purpose', 'subscription')->whereNull('client_subscription_id'),

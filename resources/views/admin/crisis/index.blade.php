@@ -109,7 +109,7 @@
 <div style="margin-top:16px;">{{ $flags->links() }}</div>
 
 <p style="font-size:11px;color:var(--ink-300);margin-top:12px;">
-    Check-in flags also alert the client's therapist and every admin by email and SMS. This page is for visibility and follow-up only — it doesn't contact the client itself.
+    Check-in flags also alert the client's therapist and every admin by email and SMS. This page is for information and follow-up only. It does not contact the client.
 </p>
 
 <script>

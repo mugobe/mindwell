@@ -1,262 +1,228 @@
 @extends('layouts.app')
-@section('title', 'Finding your specialist')
+@section('title', 'Finding your therapist')
 @section('content')
-
-<div class="mw-lobby-glow" aria-hidden="true"></div>
-<div class="mw-leaves" id="mw-leaves" aria-hidden="true"></div>
-
-<div class="mw-lobby">
-    <div class="mw-lobby-orb-wrap">
-        <div class="mw-lobby-orb"></div>
-        <div class="mw-lobby-orb mw-lobby-orb-ring"></div>
-        <div class="mw-lobby-countdown" id="mw-countdown">{{ sprintf('%d:00', $targetMinutes) }}</div>
-    </div>
-
-    <div class="mw-lobby-breathe" id="mw-lobby-breathe">Breathe in…</div>
-
-    <h1 class="mw-lobby-title">You're in good hands</h1>
-    <p class="mw-lobby-sub">We're finding you an available specialist now — we'll take you straight there the moment someone's ready.</p>
-
-    <div class="pill teal" id="lobby-pill" style="margin:4px auto 8px;display:inline-block;">Finding a specialist…</div>
-
-    <div class="mw-lobby-rotator-card">
-        <span class="mw-lobby-quote-mark">&ldquo;</span>
-        <div class="mw-lobby-rotator" aria-live="off">
-            <span class="mw-lobby-line" id="mw-lobby-line"></span>
-        </div>
-    </div>
-
-    <div class="mw-lobby-timeout" id="mw-lobby-timeout">
-        <p class="mw-lobby-timeout-text">
-            This is taking a little longer than usual. You're welcome to keep waiting — we're still looking — or if
-            you'd rather, you can pick a therapist and time yourself instead.
-        </p>
-        <form method="POST" action="{{ route('sessions.cancel', $session) }}">
-            @csrf
-            <button type="submit" class="btn ghost sm" style="border-radius:999px;">Browse therapists instead</button>
-        </form>
-    </div>
-
-    <p class="mw-lobby-footnote">
-        This page checks automatically — you don't need to refresh it.
-    </p>
-</div>
+{{-- The lobby while we find a therapist who is free now (redesigned 2026-11-06, Collins:
+     "a warm atmosphere ... advising them to have good internet, relax, they are in a good
+     space"). Uses the client look: the home page's soft hero panel and plant, white cards.
+       - Steps show where they are; "Waiting m:ss" counts from entered_lobby_at.
+       - The connection notice is judged from our own status checks (partials/calm-art).
+       - Practical tips rotate (relax / connection / privacy); a short get-ready list.
+       - The screen is kept on while waiting.
+     Polls sessions.status every 5 s; when a therapist is placed it shows their name for a
+     moment, then moves on. After lobby_target_minutes, offers "Browse therapists instead". --}}
 
 <style>
-    .mw-lobby{ max-width:560px; margin:32px auto; text-align:center; padding:0 20px; }
+    .mwl { max-width:880px; margin:0 auto; display:grid; gap:16px; }
+    .mwl-grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px; align-items:start; }
+    @media (max-width: 720px) { .mwl-grid { grid-template-columns:1fr; } }
+    .mwl .card { margin:0; min-width:0; }
+    .mwl-h2 { font-size:16px; font-weight:800; color:var(--ink-900); margin:0 0 12px; letter-spacing:-.01em; display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
+    .mwl-h2 small { font-size:12.5px; font-weight:600; color:var(--ink-500); font-variant-numeric:tabular-nums; }
 
-    .mw-lobby-orb-wrap{ position:relative; width:150px; height:150px; margin:0 auto 20px; display:flex; align-items:center; justify-content:center; }
-    .mw-lobby-orb{
-        position:absolute; inset:0; border-radius:50%;
-        background:radial-gradient(circle at 35% 32%, var(--teal-300,#7fd1c4), var(--teal-600) 60%, var(--coral-500,#e8886f) 130%);
-        opacity:.9; filter:blur(.3px);
-        animation:mw-breathe 6s ease-in-out infinite;
-        box-shadow:0 0 50px 6px rgba(20,150,140,.18);
-    }
-    .mw-lobby-orb-ring{
-        background:none; border:1.5px solid var(--teal-300,#8fd6ca); opacity:.5;
-        animation:mw-breathe-ring 6s ease-in-out infinite;
-        box-shadow:none;
-    }
-    @keyframes mw-breathe{
-        0%, 100% { transform:scale(.92); opacity:.85; }
-        50% { transform:scale(1.06); opacity:1; }
-    }
-    @keyframes mw-breathe-ring{
-        0%, 100% { transform:scale(1.05); opacity:.35; }
-        50% { transform:scale(1.35); opacity:0; }
-    }
-    .mw-lobby-countdown{
-        position:relative; z-index:1; font-size:22px; font-weight:800; color:#fff;
-        text-shadow:0 1px 3px rgba(0,0,0,.15); letter-spacing:.02em;
-    }
+    .mwl-steps { list-style:none; margin:0; padding:0; }
+    .mwl-steps li { display:flex; gap:12px; align-items:flex-start; position:relative; padding-bottom:14px; }
+    .mwl-steps li:last-child { padding-bottom:0; }
+    .mwl-steps li:not(:last-child)::after { content:''; position:absolute; left:11px; top:26px; bottom:2px; width:2px; background:rgba(3,40,80,.08); }
+    .mwl-ic { width:24px; height:24px; flex:0 0 24px; border-radius:50%; border:2px solid #A3AFC0; display:grid; place-items:center; background:#fff; color:#fff; }
+    .mwl-ic svg { width:13px; height:13px; display:none; }
+    .mwl-t { font-weight:700; color:var(--ink-500); font-size:14px; }
+    .mwl-s { font-size:12.5px; color:var(--ink-500); }
+    .mwl-steps .done .mwl-ic { background:var(--mw-green-500, #00B888); border-color:var(--mw-green-500, #00B888); }
+    .mwl-steps .done .mwl-ic svg { display:block; }
+    .mwl-steps .done .mwl-t { color:var(--ink-900); }
+    .mwl-steps .now .mwl-ic { border-color:var(--mw-navy, #034C8F); }
+    .mwl-steps .now .mwl-ic::after { content:''; width:8px; height:8px; border-radius:50%; background:var(--mw-navy, #034C8F); animation:mwlPing 1.8s ease-out infinite; }
+    .mwl-steps .now .mwl-t { color:var(--mw-navy, #034C8F); }
+    @keyframes mwlPing { 0% { box-shadow:0 0 0 0 rgba(3,76,143,.45); } 100% { box-shadow:0 0 0 8px rgba(3,76,143,0); } }
 
-    .mw-lobby-breathe{
-        font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
-        color:var(--teal-600); margin-bottom:16px; opacity:.85;
-        transition:opacity .8s ease;
-    }
+    .mwl-net { margin:14px 0 0; }
 
-    .mw-lobby-title{ font-size:20px; font-weight:800; margin-bottom:8px; color:var(--ink-900); }
-    .mw-lobby-sub{ font-size:13.5px; color:var(--ink-500); max-width:400px; margin:0 auto 14px; line-height:1.6; }
+    .mwl-tip-k { font-size:12px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; color:var(--mw-green, #00A87C); }
+    .mwl-tip { font-size:16px; font-weight:600; color:var(--ink-900); line-height:1.5; margin:6px 0 14px; min-height:4.5em; transition:opacity .5s ease; }
+    .mwl-tip.out { opacity:0; }
+    .mwl-tip-foot { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .mwl-dots { display:flex; gap:5px; }
+    .mwl-dots i { width:6px; height:6px; border-radius:3px; background:#A3AFC0; opacity:.5; transition:all .3s; }
+    .mwl-dots i.on { width:16px; background:var(--mw-navy, #034C8F); opacity:1; }
+    .mwl-link { border:0; background:none; color:var(--mw-navy, #034C8F); font-weight:700; font-size:13px; cursor:pointer; padding:6px 0; font-family:inherit; }
 
-    /* Given its own card so the rotating message reads as a distinct, held moment
-       instead of blending into the surrounding paragraph text. */
-    .mw-lobby-rotator-card{
-        position:relative; background:linear-gradient(180deg, rgba(255,255,255,.9), rgba(255,247,240,.9));
-        border:1px solid rgba(232,136,111,.18); border-radius:16px;
-        padding:26px 30px 22px; margin:22px auto 6px; max-width:440px;
-        box-shadow:0 8px 24px rgba(20,60,55,.05);
-    }
-    .mw-lobby-quote-mark{
-        position:absolute; top:2px; left:16px; font-size:44px; line-height:1; font-weight:800;
-        color:var(--coral-500,#e8886f); opacity:.25; font-family:Georgia, serif;
-    }
-    .mw-lobby-rotator{
-        min-height:52px; display:flex; align-items:center; justify-content:center;
-    }
-    .mw-lobby-line{
-        font-size:16px; font-weight:600; color:var(--ink-900); line-height:1.55; opacity:0;
-        transform:translateY(10px); transition:opacity .7s ease, transform .7s ease;
-    }
-    .mw-lobby-line.mw-visible{ opacity:1; transform:translateY(0); }
+    .mwl-ticks { list-style:none; margin:0; padding:0; display:grid; gap:8px; }
+    .mwl-tick { width:100%; display:flex; align-items:center; gap:12px; text-align:left; border:0; border-radius:14px; padding:11px 12px; background:#F7F9FC; color:var(--ink-700); font:inherit; font-size:13.5px; font-weight:600; cursor:pointer; min-height:46px; transition:background .2s; }
+    .mwl-tick:hover { background:var(--mw-navy-tint, #E6EFF9); }
+    .mwl-bx { width:22px; height:22px; flex:0 0 22px; border-radius:7px; border:2px solid #A3AFC0; display:grid; place-items:center; background:#fff; transition:all .2s; }
+    .mwl-bx svg { width:12px; height:12px; color:#fff; opacity:0; transform:scale(.5); transition:all .25s cubic-bezier(.3,1.6,.5,1); }
+    .mwl-tick[aria-pressed="true"] { color:var(--ink-900); background:var(--mw-green-tint, #DDF5EC); }
+    .mwl-tick[aria-pressed="true"] .mwl-bx { background:var(--mw-green-500, #00B888); border-color:var(--mw-green-500, #00B888); }
+    .mwl-tick[aria-pressed="true"] .mwl-bx svg { opacity:1; transform:scale(1); }
+    .mwl-done { font-size:13px; font-weight:700; color:var(--mw-green, #00A87C); margin-top:10px; }
+    .mwl-done:empty { display:none; }
 
-    .mw-lobby-footnote{ font-size:11px; color:var(--ink-300); margin-top:22px; }
-
-    .mw-lobby-timeout{
-        max-width:400px; margin:22px auto 0; padding-top:18px; border-top:1px solid var(--ink-100);
-        opacity:0; max-height:0; overflow:hidden; transition:opacity .6s ease;
-    }
-    .mw-lobby-timeout.mw-visible{ opacity:1; max-height:200px; }
-    .mw-lobby-timeout-text{ font-size:12.5px; color:var(--ink-500); line-height:1.6; margin-bottom:12px; }
-
-    /* Soft warm wash behind the whole scene, beneath the leaves. */
-    .mw-lobby-glow{
-        position:fixed; inset:0; z-index:-1; pointer-events:none;
-        background:
-            radial-gradient(circle at 15% 20%, rgba(233,161,110,.12), transparent 45%),
-            radial-gradient(circle at 85% 75%, rgba(232,136,111,.10), transparent 45%);
-    }
-
-    /* Falling leaves — decorative only, confined to the side margins so they never sit
-       behind the readable content. Hidden on narrow screens where there is no side
-       whitespace for them to live in. */
-    .mw-leaves{ position:fixed; inset:0; overflow:hidden; pointer-events:none; z-index:0; }
-    .mw-lobby{ position:relative; z-index:1; }
-
-    .mw-leaf{
-        position:absolute; top:-8vh; width:14px; height:14px; opacity:0;
-        border-radius:0 100% 0 100%;
-        animation-name:mw-leaf-fall; animation-timing-function:linear; animation-iteration-count:infinite;
-    }
-    .mw-leaf.mw-leaf-a{ background:linear-gradient(135deg,#f0a37c,var(--coral-500,#e8886f)); }
-    .mw-leaf.mw-leaf-b{ background:linear-gradient(135deg,#e9c27f,#d99a4e); }
-    .mw-leaf.mw-leaf-c{ background:linear-gradient(135deg,#e2896a,#c96b4a); }
-
-    @keyframes mw-leaf-fall{
-        0%   { transform:translate(0,0) rotate(0deg); opacity:0; }
-        8%   { opacity:.55; }
-        25%  { transform:translate(16px, 28vh) rotate(90deg); }
-        50%  { transform:translate(-14px, 56vh) rotate(180deg); }
-        75%  { transform:translate(16px, 84vh) rotate(270deg); }
-        94%  { opacity:.45; }
-        100% { transform:translate(-10px, 112vh) rotate(360deg); opacity:0; }
-    }
-
-    @media (max-width:900px){ .mw-leaves{ display:none; } }
+    .mwl-later { border-top:1px solid rgba(3,40,80,.08); margin-top:14px; padding-top:14px; }
+    .mwl-later p { margin:0 0 10px; font-size:13px; color:var(--ink-700); }
+    .mwl-foot { text-align:center; font-size:12px; color:var(--ink-500); margin:0; }
+    @media (prefers-reduced-motion: reduce) { .mwl-steps .now .mwl-ic::after { animation:none; } .mwl-tip { transition:none; } }
 </style>
+
+@php($mwlTick = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg>')
+
+<div class="mwl">
+    <section class="mwcalm-hero">
+        <div class="mwcalm-text">
+            <div class="mwcalm-kicker" id="mwl-kicker">Finding your therapist</div>
+            <h1 id="mwl-title">Take a breath. You're in the right place.</h1>
+            <p id="mwl-sub">We're finding a therapist who is free now. Keep this page open and we'll bring you in as soon as they're ready.</p>
+        </div>
+        @include('partials.calm-art')
+    </section>
+
+    <div class="mwl-grid">
+        <section class="card" aria-labelledby="mwl-where">
+            <h2 class="mwl-h2" id="mwl-where">Where you are <small id="mwl-waited">Waiting 0:00</small></h2>
+            <ol class="mwl-steps">
+                <li class="done"><span class="mwl-ic">{!! $mwlTick !!}</span><div><div class="mwl-t">Session booked</div></div></li>
+                <li class="now" id="mwl-s-match"><span class="mwl-ic">{!! $mwlTick !!}</span><div><div class="mwl-t">Finding a therapist</div><div class="mwl-s" id="mwl-s-match-s">Most people are matched in under {{ $targetMinutes }} minutes</div></div></li>
+                <li id="mwl-s-join"><span class="mwl-ic">{!! $mwlTick !!}</span><div><div class="mwl-t">Joining your session</div></div></li>
+            </ol>
+
+            <div class="mw-note top info mwl-net" id="mwl-net" role="status">
+                <div class="mw-note-body">
+                    <div class="mw-note-title" id="mwl-net-t">Checking your connection…</div>
+                    <div class="mw-note-text" id="mwl-net-x" hidden></div>
+                </div>
+            </div>
+
+            <div class="mwl-later" id="mwl-later" hidden>
+                <p>This is taking longer than usual. You can keep waiting while we keep looking, or choose a therapist and a time yourself.</p>
+                <form method="POST" action="{{ route('sessions.cancel', $session) }}">
+                    @csrf
+                    <button type="submit" class="btn ghost" style="border-radius:999px;">Browse therapists instead</button>
+                </form>
+            </div>
+        </section>
+
+        <section class="card" aria-labelledby="mwl-wait">
+            <h2 class="mwl-h2" id="mwl-wait">While you wait</h2>
+            <div class="mwl-tip-k" id="mwl-tip-k">Relax</div>
+            <p class="mwl-tip" id="mwl-tip" aria-live="polite">Take a slow breath in, and a longer breath out. There is no rush.</p>
+            <div class="mwl-tip-foot">
+                <div class="mwl-dots" id="mwl-dots" aria-hidden="true"></div>
+                <button type="button" class="mwl-link" id="mwl-tip-next">Next tip</button>
+            </div>
+        </section>
+    </div>
+
+    <section class="card" aria-labelledby="mwl-ready">
+        <h2 class="mwl-h2" id="mwl-ready">Get ready <small id="mwl-count">0 of 4 done</small></h2>
+        <ul class="mwl-ticks" id="mwl-ticks">
+            @foreach (["I'm somewhere quiet and private", 'My headphones are in, if I have them', 'My phone is charged or plugged in', 'I have some water nearby'] as $item)
+                <li><button type="button" class="mwl-tick" aria-pressed="false"><span class="mwl-bx">{!! $mwlTick !!}</span>{{ $item }}</button></li>
+            @endforeach
+        </ul>
+        <div class="mwl-done" id="mwl-done" aria-live="polite"></div>
+    </section>
+
+    <p class="mwl-foot">This page updates by itself. You don't need to refresh it.</p>
+</div>
 
 <script>
 (function () {
+    var $ = function (id) { return document.getElementById(id); };
     var statusUrl = @json(route('sessions.status', $session));
-    var pill = document.getElementById('lobby-pill');
+    var target = {{ (int) $targetMinutes }} * 60;
+    var waited = {{ (int) $waitedSeconds }};
+    var found = false;
+    var reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+    MwCalm.keepAwake();
+
+    // ---- Waiting time and the "browse instead" option
+    function fmt(s) { var m = Math.floor(s / 60), r = s % 60; return m + ':' + (r < 10 ? '0' : '') + r; }
+    function renderWait() {
+        if (found) return;
+        $('mwl-waited').textContent = 'Waiting ' + fmt(waited);
+        $('mwl-later').hidden = waited < target;
+    }
+    renderWait();
+    setInterval(function () { waited++; renderWait(); }, 1000);
+
+    // ---- Connection notice
+    var NET = {
+        checking: ['Checking your connection…', '', 'info'],
+        good: ['Your connection looks good', '', 'success'],
+        weak: ['Your connection is weak', 'Move to where your signal is strongest, or closer to your Wi-Fi. Pause any downloads.', 'warn'],
+        off: ["You're offline", "We'll keep your place. When you're back online, this page carries on by itself.", 'danger']
+    };
+    MwCalm.onNet(function (q) {
+        var box = $('mwl-net'), n = NET[q];
+        box.className = 'mw-note top mwl-net ' + n[2];
+        $('mwl-net-t').textContent = n[0];
+        $('mwl-net-x').textContent = n[1];
+        $('mwl-net-x').hidden = !n[1];
+    });
+
+    // ---- Is a therapist free yet?
+    function found_(data) {
+        found = true;
+        var m = $('mwl-s-match'); m.className = 'done';
+        $('mwl-s-match-s').textContent = data.therapist || '';
+        $('mwl-s-join').className = 'now';
+        $('mwl-kicker').textContent = 'Therapist found';
+        $('mwl-title').textContent = data.therapist ? data.therapist + ' is ready for you' : 'Your therapist is ready for you';
+        $('mwl-sub').textContent = 'Taking you to your session now…';
+        $('mwl-waited').textContent = 'Matched in ' + fmt(waited);
+        $('mwl-later').hidden = true;
+        setTimeout(function () { window.location.href = data.redirect; }, reduce ? 300 : 1800);
+    }
     function poll() {
-        fetch(statusUrl, { headers: { 'Accept': 'application/json' } })
+        MwCalm.fetch(statusUrl, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 if (data.redirect) {
-                    pill.textContent = 'Specialist found — connecting…';
-                    window.location.href = data.redirect;
+                    if (data.status === 'scheduled') { found_(data); } else { window.location.href = data.redirect; }
                     return;
                 }
                 setTimeout(poll, 5000);
             })
             .catch(function () { setTimeout(poll, 8000); });
     }
-    setTimeout(poll, 4000);
+    setTimeout(poll, 3000);
 
-    // Soft countdown — never goes negative or looks "broken" once time's up. Once it
-    // runs out, quietly reveal the "browse instead" bail-out — the client keeps
-    // waiting by default, this is just an option now sitting there if they want it.
-    var secondsLeft = {{ (int) $targetMinutes }} * 60;
-    var countdownEl = document.getElementById('mw-countdown');
-    var timeoutEl = document.getElementById('mw-lobby-timeout');
-    setInterval(function () {
-        if (secondsLeft <= 0) {
-            countdownEl.textContent = '···';
-            timeoutEl.classList.add('mw-visible');
-            return;
-        }
-        secondsLeft--;
-        var m = Math.floor(secondsLeft / 60);
-        var s = secondsLeft % 60;
-        countdownEl.textContent = m + ':' + (s < 10 ? '0' : '') + s;
-    }, 1000);
-
-    // Breathing cue text, synced to the orb's 6s pulse (mw-breathe keyframes: scale
-    // peaks — full "in" — at the 3s midpoint, back to resting — "out" — at 6s/0s).
-    var breatheEl = document.getElementById('mw-lobby-breathe');
-    var breathingIn = true;
-    breatheEl.textContent = 'Breathe in…';
-    setInterval(function () {
-        breatheEl.style.opacity = 0;
-        setTimeout(function () {
-            breathingIn = !breathingIn;
-            breatheEl.textContent = breathingIn ? 'Breathe in…' : '…and out';
-            breatheEl.style.opacity = .85;
-        }, 250);
-    }, 3000);
-
-    // Gentle rotating lines — a mix of reassurance and light practical prep,
-    // replacing what used to be a static readiness checklist.
-    var lines = [
-        "You're in a safe, private space right now.",
-        "Take a slow breath in… and let it out.",
-        "You've already done the hardest part by reaching out.",
-        "If you can, find a quiet corner just for you.",
-        "A stable connection helps — but don't worry if it isn't perfect.",
-        "Headphones nearby can help you feel more present, if you have them.",
-        "Whatever you're feeling right now is okay.",
-        "We won't rush finding the right person for you.",
-        "You don't need the right words ready — just show up as you are.",
-        "This time is yours."
+    // ---- Tips: short and practical (relax, connection, privacy)
+    var tips = [
+        ['Relax', 'Take a slow breath in, and a longer breath out. There is no rush.'],
+        ['Your connection', 'Stay where your signal is strongest. On Wi-Fi, sit close to the router.'],
+        ['Privacy', 'Your session is private. Only you and your therapist will be there.'],
+        ['Your connection', 'Pause downloads and close video apps so your call stays clear.'],
+        ['Relax', 'Let your shoulders drop and rest your feet on the floor.'],
+        ['Getting started', "You don't need to prepare anything. Start wherever feels easiest."],
+        ['Your connection', 'Headphones help you hear clearly and keep the call private.']
     ];
-    var lineEl = document.getElementById('mw-lobby-line');
-    var idx = 0;
-
-    function showLine() {
-        lineEl.textContent = lines[idx % lines.length];
-        requestAnimationFrame(function () {
-            lineEl.classList.add('mw-visible');
-        });
-        idx++;
+    var ti = 0, dots = $('mwl-dots');
+    tips.forEach(function () { dots.appendChild(document.createElement('i')); });
+    function showTip() {
+        var t = tips[ti % tips.length], el = $('mwl-tip');
+        el.classList.add('out');
+        setTimeout(function () {
+            $('mwl-tip-k').textContent = t[0]; el.textContent = t[1]; el.classList.remove('out');
+            [].forEach.call(dots.children, function (d, i) { d.classList.toggle('on', i === ti % tips.length); });
+        }, reduce ? 0 : 300);
     }
+    var tipTimer = setInterval(function () { ti++; showTip(); }, 8000);
+    $('mwl-tip-next').addEventListener('click', function () {
+        clearInterval(tipTimer); ti++; showTip();
+        tipTimer = setInterval(function () { ti++; showTip(); }, 8000);
+    });
+    showTip();
 
-    function cycle() {
-        lineEl.classList.remove('mw-visible');
-        setTimeout(showLine, 400);
-    }
-
-    showLine();
-    setInterval(cycle, 4800);
-
-    // Falling leaves, kept out of the readable center column — random spot in
-    // either side gutter, random size/speed/variant so they don't fall in lockstep.
-    var leafContainer = document.getElementById('mw-leaves');
-    if (leafContainer && window.innerWidth > 900) {
-        var variants = ['mw-leaf-a', 'mw-leaf-b', 'mw-leaf-c'];
-        var count = 16;
-        for (var i = 0; i < count; i++) {
-            var leaf = document.createElement('div');
-            var inLeftGutter = Math.random() < 0.5;
-            var gutterPos = inLeftGutter
-                ? (Math.random() * 16 + 2)
-                : (Math.random() * 16 + 82);
-            var size = Math.floor(Math.random() * 10) + 10;
-            var duration = (Math.random() * 8 + 10).toFixed(1);
-            var delay = (Math.random() * -18).toFixed(1);
-
-            leaf.className = 'mw-leaf ' + variants[i % variants.length];
-            leaf.style.left = gutterPos + 'vw';
-            leaf.style.width = size + 'px';
-            leaf.style.height = size + 'px';
-            leaf.style.animationDuration = duration + 's';
-            leaf.style.animationDelay = delay + 's';
-
-            leafContainer.appendChild(leaf);
-        }
-    }
+    // ---- Get-ready list (just for the client; nothing is saved)
+    var list = $('mwl-ticks');
+    list.addEventListener('click', function (e) {
+        var b = e.target.closest('.mwl-tick'); if (!b) return;
+        b.setAttribute('aria-pressed', b.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
+        var all = list.querySelectorAll('.mwl-tick').length, on = list.querySelectorAll('[aria-pressed="true"]').length;
+        $('mwl-count').textContent = on + ' of ' + all + ' done';
+        $('mwl-done').textContent = on === all ? "You're all set. Your therapist will be with you soon." : '';
+    });
 })();
 </script>
 @endsection

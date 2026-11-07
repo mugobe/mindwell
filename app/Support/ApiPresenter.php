@@ -45,6 +45,7 @@ class ApiPresenter
             'client_label' => rescue(fn () => $user->clientLabel(), null, false),
             'notify_email' => (bool) ($user->notify_email ?? true),
             'notify_sms' => (bool) ($user->notify_sms ?? false),
+            'journal_reminders' => $user->journal_reminders ?? 'off',
             'share_mood_with_therapist' => (bool) $user->share_mood_with_therapist,
             'must_change_password' => (bool) $user->must_change_password,
             'consent_required' => ! $user->hasAcceptedCurrentLegal(),

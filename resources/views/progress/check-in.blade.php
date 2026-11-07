@@ -20,7 +20,7 @@
         <h1 style="font-size:19px;font-weight:800;margin-bottom:6px;color:var(--ink-900);">Your check-in</h1>
         <p style="font-size:12.5px;color:var(--ink-500);line-height:1.6;">
             The same questions as your first assessment, so you and your therapist can see what's changing.
-            There are no wrong answers. Answer based on <b>the last 2 weeks</b> — it takes about 3 minutes.
+            There are no wrong answers. Answer based on <b>the last 2 weeks</b>. It takes about 3 minutes.
             Your answers are shared with your therapist.
         </p>
     </div>
@@ -69,7 +69,7 @@
 
     <noscript>
         <p style="font-size:11px;color:var(--ink-300);margin-top:14px;">
-            JavaScript is off, so every question is shown on one page — just answer them all and submit at the bottom.
+            JavaScript is off, so every question is shown on one page. Answer them all, then submit at the bottom.
         </p>
         <button type="submit" form="mw-intake-form" class="btn primary block" style="margin-top:8px;border-radius:999px;">Continue</button>
     </noscript>

@@ -39,7 +39,7 @@
 </div>
 
 <nav class="mw-tabs" aria-label="Sections">
-    <a href="#close" class="{{ $toClose->isNotEmpty() ? 'on' : '' }}">To close out <span class="n" @if ($toClose->isNotEmpty()) style="background:var(--mw-orange,#E8825E);color:#fff;" @endif>{{ $toClose->count() }}</span></a>
+    <a href="#close" class="{{ $toClose->isNotEmpty() ? 'on' : '' }}">To close out <span class="n" @if ($toClose->isNotEmpty()) style="background:#EE7800;color:#fff;" @endif>{{ $toClose->count() }}</span></a>
     <a href="#upcoming" class="{{ $toClose->isEmpty() ? 'on' : '' }}">Upcoming <span class="n">{{ $ahead->count() }}</span></a>
     <a href="#closed">Recently closed <span class="n">{{ $recentlyClosed->count() }}</span></a>
 </nav>
@@ -68,22 +68,22 @@
                             </td>
                             <td style="white-space:nowrap;">
                                 <div style="font-size:13px;color:var(--ink-900);">{{ $session->scheduled_at?->format('D j M Y') ?? '—' }}</div>
-                                <div style="font-size:11.5px;color:{{ $key === 'close' ? 'var(--mw-orange,#E8825E)' : 'var(--ink-300)' }};">{{ $session->scheduled_at?->format('g:i A') }} · {{ $session->scheduled_at?->diffForHumans() }}</div>
+                                <div style="font-size:11.5px;color:{{ $key === 'close' ? '#EE7800' : 'var(--ink-300)' }};">{{ $session->scheduled_at?->format('g:i A') }} · {{ $session->scheduled_at?->diffForHumans() }}</div>
                             </td>
                             <td>
                                 @if ($session->isInPerson())
-                                    <span class="pill success" title="{{ $session->locationText() }}">In person</span>
+                                    <span class="mw-chip green" title="{{ $session->locationText() }}">In person</span>
                                     @if ($session->venue)<div style="font-size:11.5px;color:var(--ink-500);margin-top:2px;">{{ $session->venue->name }}</div>@endif
                                 @else
-                                    <span class="pill teal">Video</span>
+                                    <span class="mw-chip navy">Video</span>
                                 @endif
                             </td>
                             <td style="padding-right:18px;text-align:right;white-space:nowrap;">
                                 @if ($key === 'close' || $session->isInPerson())
                                     <a href="{{ route('therapist.sessions.close', $session) }}" class="btn {{ $key === 'close' ? 'primary' : 'ghost' }} sm">Close out</a>
                                 @else
-                                    {{-- The room page itself handles "not open yet" / "ended". --}}
-                                    <a href="{{ route('sessions.room', $session) }}" class="btn coral sm">Join video</a>
+                                    {{-- 2026-11-03: Join only when it's nearly time; a countdown otherwise. --}}
+                                    @include('partials.therapist-join', ['session' => $session])
                                 @endif
                                 <details class="mw-menu" style="vertical-align:middle;margin-left:4px;">
                                     <summary aria-label="More actions">

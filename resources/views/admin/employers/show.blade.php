@@ -38,8 +38,8 @@
 </div>
 
 @if ($employer->isEndingSoon())
-    <div class="mw-alert" style="background:#FDF1EC;color:#8a4326;border:1px solid rgba(232,130,94,.35);margin-bottom:14px;">
-        The contract renews on <strong>{{ $employer->contract_renewal_date->format('j M Y') }}</strong> — contact them about renewing, then update the date.
+    <div class="mw-alert warn" style="margin-bottom:14px;">
+        The contract renews on <strong>{{ $employer->contract_renewal_date->format('j M Y') }}</strong>. Contact them about renewing, then update the date.
     </div>
 @endif
 
@@ -66,7 +66,7 @@
             @forelse ($employer->seats as $seat)
             <tr>
                 <td style="padding-left:18px;"><span class="mw-code">{{ $seat->seat_code }}</span></td>
-                <td>@if ($seat->clientProfile?->user) @include('partials.person', ['name' => $seat->clientProfile->user->name, 'size' => 28]) @else <span style="color:var(--ink-300);">— unredeemed —</span> @endif</td>
+                <td>@if ($seat->clientProfile?->user) @include('partials.person', ['name' => $seat->clientProfile->user->name, 'size' => 28]) @else <span style="color:var(--ink-300);">Not used yet</span> @endif</td>
                 <td style="white-space:nowrap;">{{ $seat->assigned_at?->format('j M Y') ?? '—' }}</td>
                 <td>{{ $seat->sessions_had ?? '—' }}</td>
                 <td>
@@ -116,7 +116,7 @@
 <p style="font-size:11px;color:var(--ink-300);margin-top:12px;line-height:1.6;">
     A client redeems one of these codes from their "Employer benefit" page; their sessions are then free while this employer is Active
     and its contract hasn't lapsed. "Sessions had" counts only sessions this seat actually covered. "Deactivate employer" cuts off every
-    seat at once; switching off one seat cuts off only that person. "Reissue" clears a seat and makes a new code — use it when someone
+    seat at once; switching off one seat cuts off only that person. "Reissue" clears a seat and makes a new code. Use it when someone
     leaves and the seat should go to a new hire. Reissuing doesn't notify anyone of the new code yet.
 </p>
 

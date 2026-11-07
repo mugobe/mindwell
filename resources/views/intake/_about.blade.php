@@ -20,7 +20,7 @@
 
         @if ($section === 'topics')
             <div class="mw-step-question">What brings you here?</div>
-            <div class="mw-about-help">Pick anything that fits — as many as you like.</div>
+            <div class="mw-about-help">Choose all that apply.</div>
             <div class="mw-chips" role="group" aria-label="Topics">
                 @foreach ($IQ::topicChoices($d) as $t)
                     <label class="mw-chip-opt"><input type="checkbox" name="about_topics[]" value="{{ $t }}" {{ in_array($t, $picked('about_topics', 'topics'), true) ? 'checked' : '' }}><span>{{ $t }}</span></label>
@@ -31,7 +31,7 @@
 
         @elseif ($section === 'mood')
             <div class="mw-step-question">How are you feeling right now?</div>
-            <div class="mw-about-help">Just today — there's no right answer.</div>
+            <div class="mw-about-help">Just for today. There is no right or wrong answer.</div>
             <div class="mw-chips" role="radiogroup" aria-label="Mood right now">
                 @foreach (\App\Models\JournalEntry::MOODS as $v => $label)
                     <label class="mw-chip-opt"><input type="radio" name="about_mood" value="{{ $v }}" {{ (int) $val('about_mood', 'mood_now') === $v ? 'checked' : '' }}><span><i style="background:{{ $moodColors[$v] }};"></i>{{ $label }}</span></label>

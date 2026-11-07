@@ -7,7 +7,7 @@
     <div style="margin-bottom:16px;">
         <h1 style="font-size:21px;font-weight:800;color:var(--ink-900);margin:0 0 6px;">Tell your therapist a bit about you</h1>
         <p style="font-size:13px;color:var(--ink-500);line-height:1.6;margin:0;">
-            Answer as much or as little as you like — every question is optional. Only your therapist and the Mindwell care
+            Answer as much or as little as you like. Every question is optional. Only your therapist and the Mindwell care
             team see this. If you need help right now, <a href="{{ route('urgent-help') }}" style="color:var(--teal-600, #2f6f66);font-weight:700;">get urgent help</a>.
         </p>
     </div>

@@ -26,7 +26,7 @@
 
 <div style="display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;align-items:start;" class="mw-cal-layout">
     <div>
-        @include('calendar._grid', ['cal' => $cal, 'calRoute' => 'admin.calendar', 'calQuery' => $filter !== '' ? ['therapist' => $filter] : [], 'focus' => $focus])
+        @include('calendar._grid', ['cal' => $cal, 'calRoute' => 'admin.calendar', 'calQuery' => $filter !== '' ? ['therapist' => $filter] : [], 'focus' => $focus, 'calTherapists' => $therapists])
     </div>
     <div>
         @include('calendar._panel', ['ev' => $ev, 'viewer' => 'admin', 'money' => $money, 'clashes' => $clashes])

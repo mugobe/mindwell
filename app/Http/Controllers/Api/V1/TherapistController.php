@@ -27,18 +27,20 @@ class TherapistController extends Controller
         return response()->json(['therapists' => $therapists->map(fn ($t) => ApiPresenter::therapist($t))->values()]);
     }
 
-    public function show(TherapistProfile $therapist, OpenSlots $slots): JsonResponse
+    public function show(Request $request, TherapistProfile $therapist, OpenSlots $slots): JsonResponse
     {
         abort_unless($therapist->credentials_verified, 404);
         $therapist->loadMissing('user');
 
         return response()->json([
+            // 2026-11-07: the first assessment comes before any booking.
+            'assessment_required' => TherapistBookingController::needsAssessment($request->user()),
             'therapist' => ApiPresenter::therapist($therapist, full: true),
             'prices' => [
                 'video' => (float) config('mindwell.one_off_session_price'),
                 'in_person' => (float) config('mindwell.in_person_session_price'),
             ],
-            'days' => $slots->for($therapist, 7)
+            'days' => $slots->for($therapist, TherapistBookingController::daysAhead())
                 ->groupBy(fn ($s) => $s->toDateString())
                 ->map(fn ($day, $date) => ['date' => $date, 'times' => $day->map(fn ($t) => ApiPresenter::date($t))->values()])
                 ->values(),
@@ -59,6 +61,13 @@ class TherapistController extends Controller
         $therapist->loadMissing('user');
         if ($mode === TherapySession::MODE_IN_PERSON && ! $therapist->offers_in_person) {
             return response()->json(['message' => ($therapist->user?->name ?? 'This therapist')." isn't seeing clients in person right now. Please book an online session."], 422);
+        }
+
+        if (TherapistBookingController::needsAssessment($request->user())) {
+            return response()->json([
+                'message' => 'Before your first booking, please answer a few short questions (about 5 minutes). Your therapist reads them before you meet.',
+                'code' => 'assessment_required',
+            ], 409);
         }
 
         // The slot times come from the API in the app's timezone; compare in that timezone.

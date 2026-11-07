@@ -19,7 +19,8 @@
         }
     }
     $openDays = collect($days)->filter(fn ($d) => $slots->get($d, collect())->isNotEmpty())->count();
-    $addOpen = $errors->has('day_of_week') || $errors->has('start_time') || $errors->has('end_time') || $slots->isEmpty();
+    $addOpen = $errors->has('day_of_week') || $errors->has('on_date') || $errors->has('start_time') || $errors->has('end_time') || $slots->isEmpty();
+    $mwWeekly = (bool) old('is_recurring', true);
 @endphp
 
 <div class="mw-page-head">
@@ -45,13 +46,22 @@
     </summary>
     <form method="POST" action="{{ route('therapist.availability.store') }}" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;padding:4px 18px 18px;">
         @csrf
-        <div>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-700);padding-bottom:11px;width:100%;">
+            <input type="hidden" name="is_recurring" value="0">
+            <input type="checkbox" name="is_recurring" value="1" id="mw-weekly" @checked($mwWeekly)>
+            Repeats weekly <span style="color:var(--ink-500);">(untick for one date only)</span>
+        </label>
+        <div id="mw-day-wrap" @if (! $mwWeekly) hidden @endif>
             <label class="mw-label" for="day_of_week">Day</label>
-            <select class="mw-field" id="day_of_week" name="day_of_week" required>
+            <select class="mw-field" id="day_of_week" name="day_of_week">
                 @foreach ($days as $day)
                     <option value="{{ $day }}" {{ old('day_of_week') === $day ? 'selected' : '' }}>{{ ucfirst($day) }}</option>
                 @endforeach
             </select>
+        </div>
+        <div id="mw-date-wrap" @if ($mwWeekly) hidden @endif>
+            <label class="mw-label" for="on_date">Date</label>
+            <input class="mw-field" type="date" id="on_date" name="on_date" value="{{ old('on_date') }}" min="{{ now()->toDateString() }}">
         </div>
         <div>
             <label class="mw-label" for="start_time">From</label>
@@ -61,14 +71,22 @@
             <label class="mw-label" for="end_time">To</label>
             <input class="mw-field" type="time" id="end_time" name="end_time" value="{{ old('end_time') }}" required>
         </div>
-        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-700);padding-bottom:11px;">
-            <input type="checkbox" name="is_recurring" value="1" checked>
-            Repeats weekly
-        </label>
         <button type="submit" class="btn primary sm" style="height:41px;">Add</button>
     </form>
+    <script>
+    (function () {
+        var box = document.getElementById('mw-weekly');
+        function sync() {
+            document.getElementById('mw-day-wrap').hidden = !box.checked;
+            document.getElementById('mw-date-wrap').hidden = box.checked;
+            document.getElementById('on_date').required = !box.checked;
+        }
+        box.addEventListener('change', sync); sync();
+    })();
+    </script>
     <div style="padding:0 18px;">
         @error('day_of_week')<div class="mw-error" style="margin-bottom:10px;">{{ $message }}</div>@enderror
+        @error('on_date')<div class="mw-error" style="margin-bottom:10px;">{{ $message }}</div>@enderror
         @error('start_time')<div class="mw-error" style="margin-bottom:10px;">{{ $message }}</div>@enderror
         @error('end_time')<div class="mw-error" style="margin-bottom:10px;">{{ $message }}</div>@enderror
     </div>
@@ -108,7 +126,7 @@
                     @forelse ($daySlots as $slot)
                         <span class="mw-chip {{ $slot->is_recurring ? '' : 'once' }}">
                             @php $sA = $C::parse($slot->start_time); $sB = $C::parse($slot->end_time); @endphp
-                            {{ $sA->format($sA->format('A') === $sB->format('A') ? 'g:i' : 'g:i A') }}–{{ $sB->format('g:i A') }}@unless ($slot->is_recurring) · once @endunless
+                            {{ $sA->format($sA->format('A') === $sB->format('A') ? 'g:i' : 'g:i A') }}–{{ $sB->format('g:i A') }}@unless ($slot->is_recurring) · {{ $slot->on_date ? $slot->on_date->format('j M') . ' only' : 'once' }} @endunless
                             <form method="POST" action="{{ route('therapist.availability.destroy', $slot) }}" style="display:inline;">
                                 @csrf
                                 @method('DELETE')

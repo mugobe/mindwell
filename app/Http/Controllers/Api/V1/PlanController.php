@@ -161,7 +161,7 @@ class PlanController extends Controller
             return [null, "You don't have an active plan to renew. You can choose a plan instead."];
         }
         if ($sub->renewal_paid_at) {
-            return [null, 'Your plan is already renewed — the next period starts on '.$sub->current_period_end->format('D j M').'.'];
+            return [null, 'Your plan is already renewed. The next period starts on '.$sub->current_period_end->format('D j M').'.'];
         }
         if (! $sub->canRenew() || ! $sub->subscriptionPlan) {
             return [null, "This plan can't be renewed. Please choose a plan instead."];

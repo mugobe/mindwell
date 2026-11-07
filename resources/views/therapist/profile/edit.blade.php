@@ -21,7 +21,7 @@
 </div>
 
 @if ($profile->license_change_requested_at)
-    <div class="mw-alert" style="background:#FDF1EC;color:#8a4326;border:1px solid rgba(232,130,94,.35);margin-bottom:14px;">
+    <div class="mw-alert warn" style="margin-bottom:14px;">
         Licence change sent for approval on {{ \Illuminate\Support\Carbon::parse($profile->license_change_requested_at)->format('j M Y') }}:
         <strong>{{ $profile->pending_license_number }}</strong> ({{ $profile->pending_license_state }}).
         Your current licence ({{ $profile->license_number }}) stays active until the Mindwell team approves it.

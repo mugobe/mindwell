@@ -26,6 +26,8 @@ class User extends Authenticatable
         'phone',
         'notify_email',
         'notify_sms',
+        // 2026-11-07: optional journal reminders (null = off, morning | evening | both).
+        'journal_reminders',
         // Added 2026-10-03 for progress & mood insights — see App\Models\CheckIn.
         'check_in_reminded_at',
         'share_mood_with_therapist',
@@ -79,6 +81,12 @@ class User extends Authenticatable
         return $this->hasOne(TherapistProfile::class);
     }
 
+    /** Therapist onboarding application (2026-11-03). */
+    public function therapistApplication(): HasOne
+    {
+        return $this->hasOne(TherapistApplication::class);
+    }
+
     public function payments(): HasMany
     {
         return $this->hasMany(Payment::class);
@@ -117,7 +125,7 @@ class User extends Authenticatable
             ],
             'Choose a new password',
             route('password.reset', ['token' => $token, 'email' => $this->email]),
-            "If you didn't ask for this, you can ignore this email — your password won't change.",
+            "If you did not ask for this, you can ignore this email. Your password will not change.",
         ));
     }
 

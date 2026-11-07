@@ -50,11 +50,25 @@ class IntakeController extends Controller
     {
         $profile = $request->user()->clientProfile ?? $request->user()->clientProfile()->create([]);
 
+        // "Start the assessment now" on a therapist's booking page (?book=<therapist>).
+        if ($request->filled('book') && \App\Models\TherapistProfile::whereKey($request->query('book'))->where('credentials_verified', true)->exists()) {
+            $request->session()->put('mw_book_after_intake', ['therapist' => $request->query('book'), 'at' => null, 'mode' => null]);
+        }
+        $pending = $request->session()->get('mw_book_after_intake');
+
         if ($profile->intakeAssessments()->exists()) {
+            if ($pending) {
+                $request->session()->forget('mw_book_after_intake');
+
+                return redirect()->to(self::backToBooking($pending));
+            }
+
             return redirect()->route('dashboard')->with('status', 'You\'ve already completed your intake assessment.');
         }
 
         return view('intake.show', [
+            // 2026-11-07: came here from booking a therapist, so no "match me now" request after.
+            'forBooking' => (bool) $pending,
             'phq9Items' => self::PHQ9_ITEMS,
             'gad7Items' => self::GAD7_ITEMS,
             'options' => self::OPTIONS,
@@ -70,10 +84,19 @@ class IntakeController extends Controller
     {
         $validated = $request->validate(self::screeningRules());
 
-        $result = $this->submit($request, $validated);
+        // 2026-11-07: from booking a therapist? Then only record the assessment and go back
+        // to the time they chose, instead of starting a "find me someone now" request.
+        $pending = $request->session()->pull('mw_book_after_intake');
+
+        $result = $this->submit($request, $validated, startSession: ! $pending);
 
         if ($result['outcome'] === 'crisis') {
             return redirect()->route('intake.crisis');
+        }
+
+        if ($result['outcome'] === 'assessed') {
+            return redirect()->to($pending ? self::backToBooking($pending) : route('therapists.browse'))
+                ->with('status', $result['message'].(! empty($pending['at']) ? ' Now confirm your time below.' : ' Now choose a time below.'));
         }
 
         $request->session()->flash('status', $result['message']);
@@ -81,6 +104,14 @@ class IntakeController extends Controller
         return $result['outcome'] === 'lobby'
             ? redirect()->route('sessions.lobby', $result['session'])
             : redirect()->route('sessions.checkout', $result['session']);
+    }
+
+    /** The booking page with the time and kind of session the client had chosen. */
+    private static function backToBooking(array $pending): string
+    {
+        $query = http_build_query(array_filter(['at' => $pending['at'] ?? null, 'mode' => $pending['mode'] ?? null]));
+
+        return route('therapists.book', $pending['therapist']).($query ? '?'.$query : '');
     }
 
     /** The PHQ-9 + GAD-7 rules (shared with the mobile API). */
@@ -106,9 +137,12 @@ class IntakeController extends Controller
     /**
      * Everything after validation (2026-10-09: split out of store() so the website and the
      * mobile API run the exact same steps). Returns
-     *   ['outcome' => 'crisis'|'lobby'|'checkout', 'session' => ?TherapySession, 'message' => ?string]
+     *   ['outcome' => 'crisis'|'lobby'|'checkout'|'assessed', 'session' => ?TherapySession, 'message' => ?string]
+     *
+     * $startSession false (2026-11-07): the client came from booking a particular therapist,
+     * so only the assessment is saved ('assessed') and no "match me now" session is made.
      */
-    public function submit(Request $request, array $validated): array
+    public function submit(Request $request, array $validated, bool $startSession = true): array
     {
         $phq9Score = collect(range(1, 9))->sum(fn ($i) => (int) $validated["phq_{$i}"]);
         $gad7Score = collect(range(1, 7))->sum(fn ($i) => (int) $validated["gad_{$i}"]);
@@ -177,8 +211,12 @@ class IntakeController extends Controller
         // Phase 0 (2026-10-05), from the CLIENT DRAFT: a supportive word after screening
         // — never a diagnosis. Shown as the status message on the next screen.
         $supportMessage = in_array($riskLevel, ['moderate', 'high'], true)
-            ? 'Thank you for completing your assessment. Your answers suggest you may be experiencing symptoms that could benefit from professional support — you\'re in the right place.'
+            ? 'Thank you for completing your assessment. Your answers suggest you may be experiencing symptoms that could benefit from professional support. You are in the right place.'
             : 'Thank you for completing your assessment. Your answers will help your therapist understand how you\'ve been feeling.';
+
+        if (! $startSession) {
+            return ['outcome' => 'assessed', 'session' => null, 'message' => $supportMessage];
+        }
 
         // Not a crisis — move straight into the payment/routing flow the client asked for,
         // instead of just marking the intake as done. See SessionRequestController for what

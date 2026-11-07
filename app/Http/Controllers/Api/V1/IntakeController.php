@@ -52,10 +52,12 @@ class IntakeController extends Controller
         }
 
         $validated = $request->validate(WebIntake::screeningRules());
-        $result = app(WebIntake::class)->submit($request, $validated);
+        // for_booking (2026-11-07): the app sends this when the client came from booking a
+        // therapist; only the assessment is saved, and the app goes back to the booking.
+        $result = app(WebIntake::class)->submit($request, $validated, startSession: ! $request->boolean('for_booking'));
 
         return response()->json([
-            'outcome' => $result['outcome'],                 // crisis | lobby | checkout
+            'outcome' => $result['outcome'],                 // crisis | lobby | checkout | assessed
             'message' => $result['message'],
             'session' => $result['session'] ? ApiPresenter::session($result['session']->fresh(['therapistProfile.user', 'venue'])) : null,
         ], 201);
@@ -84,7 +86,7 @@ class IntakeController extends Controller
         ClientIntakeDetail::forget($profile->id);
 
         return response()->json([
-            'message' => 'Thank you — your therapist will see this before your next session.',
+            'message' => 'Thank you. Your therapist will see this before your next session.',
             'answers' => $this->answers(ClientIntakeDetail::for($profile->id)),
         ]);
     }
@@ -102,14 +104,14 @@ class IntakeController extends Controller
         foreach (IntakeQuestions::enabled() as $key) {
             $sections[] = match ($key) {
                 'topics' => [
-                    'key' => 'topics', 'title' => 'What brings you here?', 'help' => 'Pick anything that fits — as many as you like.',
+                    'key' => 'topics', 'title' => 'What brings you here?', 'help' => 'Choose all that apply.',
                     'fields' => [
                         ['name' => 'about_topics', 'type' => 'multi', 'options' => IntakeQuestions::topicChoices($d)],
                         ['name' => 'about_own_words', 'type' => 'text', 'label' => 'In your own words', 'max' => 2000],
                     ],
                 ],
                 'mood' => [
-                    'key' => 'mood', 'title' => 'How are you feeling right now?', 'help' => "Just today — there's no right answer.",
+                    'key' => 'mood', 'title' => 'How are you feeling right now?', 'help' => "Just for today. There is no right or wrong answer.",
                     'fields' => [['name' => 'about_mood', 'type' => 'single', 'options' => collect(JournalEntry::MOODS)->map(fn ($l, $v) => ['value' => $v, 'label' => $l])->values()]],
                 ],
                 'background' => [

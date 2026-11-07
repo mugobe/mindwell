@@ -38,40 +38,50 @@
     .mw-grid { display:grid; grid-template-columns: minmax(0, 1fr) 320px; gap:18px; align-items:start; }
     @media (max-width: 960px) { .mw-grid { grid-template-columns: 1fr; } }
 
-    /* ---- waiting room */
-    .mw-lobby { position:relative; border-radius:22px; overflow:hidden; padding:30px 28px 26px; text-align:center;
-        background:
-            radial-gradient(ellipse 38% 30% at 8% 12%, var(--mw-sage, #DEE8CE) 0 60%, transparent 62%),
-            radial-gradient(ellipse 30% 26% at 96% 88%, var(--mw-coral-tint, #FCE1D3) 0 60%, transparent 62%),
-            radial-gradient(circle at 92% 10%, var(--mw-gold, #F6E1A8) 0 22px, transparent 23px),
-            #fffdf8;
-        box-shadow: 0 1px 0 rgba(0,0,0,.04), 0 10px 30px rgba(31,46,43,.06); }
-    .mw-who { display:flex; flex-direction:column; align-items:center; gap:10px; }
+    /* ---- waiting room (calm redesign 2026-11-06: the client look's soft hero panel and
+       plant from partials/calm-art, white cards, connection check, screen kept on) */
+    .mw-lobby { display:grid; gap:16px; }
     .mw-avatar { width:78px; height:78px; border-radius:50%; background:var(--mw-teal-tint, #DCEDE8); color:var(--teal-600, #2f6f66); display:flex; align-items:center; justify-content:center; font-size:28px; font-weight:800; position:relative; }
-    .mw-ready .mw-avatar::after { content:''; position:absolute; inset:-7px; border-radius:50%; border:3px solid #6fc3a7; animation: mw-pulse 1.6s ease-out infinite; }
-    @keyframes mw-pulse { 0% { transform:scale(.9); opacity:1; } 100% { transform:scale(1.4); opacity:0; } }
-    .mw-live-dot { display:inline-block; width:9px; height:9px; border-radius:50%; background:#3ecf8e; margin-right:7px; vertical-align:middle; box-shadow:0 0 0 3px rgba(62,207,142,.25); }
-    .mw-who-text { font-size:15px; font-weight:700; color:var(--ink-900); max-width:520px; line-height:1.45; }
+    .mwr-who { display:flex; align-items:center; gap:16px; }
+    .mwr-cal { flex:0 0 76px; height:84px; border-radius:18px; background:var(--mw-navy, #034C8F); color:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; box-shadow:0 8px 20px rgba(3,76,143,.25); }
+    .mwr-cal .m { font-size:11px; font-weight:800; letter-spacing:.1em; opacity:.85; }
+    .mwr-cal .d { font-size:22px; font-weight:800; line-height:1.1; margin:2px 0; }
+    .mwr-cal .w { font-size:11px; font-weight:700; opacity:.85; }
+    .mwr-state { display:flex; align-items:center; gap:10px; margin-top:14px; padding:10px 14px; border-radius:16px; background:#fff; box-shadow:0 1px 2px rgba(3,40,80,.05), 0 0 0 1px rgba(3,40,80,.05); max-width:520px; }
+    .mwr-state .dot { width:9px; height:9px; flex:0 0 9px; border-radius:50%; background:#A3AFC0; }
+    .mwr-state .txt { font-size:13.5px; font-weight:600; color:var(--ink-900); line-height:1.45; flex:1; min-width:0; }
+    .mwr-state .cd { font-size:13px; font-weight:800; color:var(--mw-navy, #034C8F); font-variant-numeric:tabular-nums; white-space:nowrap; }
+    .mw-open .mwr-state .dot, .mw-ready .mwr-state .dot { background:var(--mw-green-500, #00B888); animation:mwrPing 1.8s ease-out infinite; }
+    .mw-ready .mwr-state { background:var(--mw-green-tint, #DDF5EC); }
+    @keyframes mwrPing { 0% { box-shadow:0 0 0 0 rgba(0,184,136,.5); } 100% { box-shadow:0 0 0 10px rgba(0,184,136,0); } }
 
-    .mw-lobby-row { display:grid; grid-template-columns: 1fr 1fr; gap:18px; margin-top:22px; text-align:left; }
-    @media (max-width: 720px) { .mw-lobby-row { grid-template-columns: 1fr; } }
-    .mw-soft { background:rgba(255,255,255,.75); border:1px solid rgba(0,0,0,.05); border-radius:16px; padding:16px; }
-    .mw-soft h3 { font-size:13px; font-weight:800; color:var(--ink-900); margin:0 0 10px; }
+    .mwr-row { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px; align-items:start; }
+    @media (max-width: 720px) { .mwr-row { grid-template-columns:1fr; } }
+    .mwr-row .card { margin:0; min-width:0; }
+    .mwr-h { font-size:16px; font-weight:800; color:var(--ink-900); margin:0 0 12px; letter-spacing:-.01em; }
+    .mwr-chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:12px; }
+    .mwr-chip { display:inline-flex; align-items:center; gap:6px; padding:5px 11px; border-radius:999px; background:#F7F9FC; color:var(--ink-500); font-size:12px; font-weight:700; }
+    .mwr-chip::before { content:''; width:7px; height:7px; border-radius:50%; background:#A3AFC0; }
+    .mwr-chip.ok { background:var(--mw-green-tint, #DDF5EC); color:#0E7A5A; } .mwr-chip.ok::before { background:var(--mw-green-500, #00B888); }
+    .mwr-chip.warn { background:#FBF0D9; color:#9A5B00; } .mwr-chip.warn::before { background:#B06000; }
+    .mwr-chip.bad { background:#FDE7DC; color:#B3261E; } .mwr-chip.bad::before { background:#B3261E; }
+    .mwr-ticks { list-style:none; margin:0; padding:0; display:grid; gap:8px; }
+    .mwr-tick { width:100%; display:flex; align-items:center; gap:12px; text-align:left; border:0; border-radius:14px; padding:10px 12px; background:#F7F9FC; color:var(--ink-700); font:inherit; font-size:13.5px; font-weight:600; cursor:pointer; min-height:44px; transition:background .2s; }
+    .mwr-tick:hover { background:var(--mw-navy-tint, #E6EFF9); }
+    .mwr-bx { width:22px; height:22px; flex:0 0 22px; border-radius:7px; border:2px solid #A3AFC0; display:grid; place-items:center; background:#fff; transition:all .2s; }
+    .mwr-bx svg { width:12px; height:12px; color:#fff; opacity:0; transform:scale(.5); transition:all .25s cubic-bezier(.3,1.6,.5,1); }
+    .mwr-tick[aria-pressed="true"] { color:var(--ink-900); background:var(--mw-green-tint, #DDF5EC); }
+    .mwr-tick[aria-pressed="true"] .mwr-bx { background:var(--mw-green-500, #00B888); border-color:var(--mw-green-500, #00B888); }
+    .mwr-tick[aria-pressed="true"] .mwr-bx svg { opacity:1; transform:scale(1); }
+    .mwr-tip { font-size:12.5px; color:var(--ink-500); margin:12px 0 0; line-height:1.5; }
+    .mwr-join { display:flex; flex-wrap:wrap; gap:10px; align-items:center; justify-content:center; text-align:center; }
+    .mwr-join .btn { border-radius:999px; padding:12px 30px; font-size:15px; }
+    .mwr-join .mw-status, .mwr-join .mw-warn { width:100%; }
+    .mwr-join #mw-join.mwr-glow { animation:mwrGlow 2s ease-out infinite; }
+    @keyframes mwrGlow { 0% { box-shadow:0 0 0 0 rgba(238,120,0,.45); } 100% { box-shadow:0 0 0 12px rgba(238,120,0,0); } }
+    .mwr-awake { width:100%; font-size:11.5px; color:var(--ink-500); margin:0; }
 
-    .mw-breathe-wrap { display:flex; align-items:center; gap:16px; }
-    .mw-breathe { flex-shrink:0; width:84px; height:84px; border-radius:50%; background:radial-gradient(circle, #8fcfb8 0%, #b9e0d1 55%, rgba(185,224,209,.35) 100%); box-shadow:0 0 0 6px rgba(143,207,184,.18); animation: mw-breathe 8s ease-in-out infinite; }
-    @keyframes mw-breathe { 0%, 100% { transform:scale(.62); } 50% { transform:scale(1); } }
-    .mw-breathe-label { position:relative; height:20px; font-size:13px; font-weight:700; color:var(--teal-600, #2f6f66); }
-    .mw-breathe-label span { position:absolute; left:0; top:0; white-space:nowrap; }
-    .mw-breathe-label .in { animation: mw-in 8s linear infinite; }
-    .mw-breathe-label .out { animation: mw-out 8s linear infinite; }
-    @keyframes mw-in { 0%, 45% { opacity:1; } 50%, 95% { opacity:0; } 100% { opacity:1; } }
-    @keyframes mw-out { 0%, 45% { opacity:0; } 50%, 95% { opacity:1; } 100% { opacity:0; } }
-    .mw-checklist { list-style:none; padding:0; margin:12px 0 0; display:flex; flex-direction:column; gap:7px; }
-    .mw-checklist li { font-size:12.5px; color:var(--ink-700); display:flex; gap:8px; align-items:flex-start; }
-    .mw-checklist li::before { content:''; flex-shrink:0; width:7px; height:7px; margin-top:5px; border-radius:50%; background:var(--mw-teal-dot, #6FA99B); }
-
-    .mw-preview { position:relative; aspect-ratio:4/3; border-radius:12px; overflow:hidden; background:#2c3f3b; display:flex; align-items:center; justify-content:center; color:#d7e6e2; font-size:12.5px; text-align:center; padding:0; }
+    .mw-preview { position:relative; aspect-ratio:16/10; border-radius:12px; overflow:hidden; background:#1F2D3D; display:flex; align-items:center; justify-content:center; color:#d7e6e2; font-size:12.5px; text-align:center; padding:0; }
     .mw-preview video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; transform:scaleX(-1); }
     .mw-meter { height:6px; border-radius:3px; background:rgba(0,0,0,.08); overflow:hidden; margin-top:10px; }
     .mw-meter i { display:block; height:100%; width:0%; background:#6fc3a7; transition:width .08s linear; }
@@ -123,7 +133,7 @@
     .mw-modal-card { background:#fff; border-radius:18px; padding:24px; max-width:360px; width:100%; text-align:center; box-shadow:0 20px 50px rgba(0,0,0,.25); }
     .mw-hidden { display:none !important; }
     .btn[disabled] { opacity:.5; cursor:not-allowed; }
-    @media (prefers-reduced-motion: reduce) { .mw-breathe, .mw-breathe-label span, .mw-ready .mw-avatar::after { animation:none !important; } .mw-breathe-label .out { opacity:0; } }
+    @media (prefers-reduced-motion: reduce) { .mw-open .mwr-state .dot, .mw-ready .mwr-state .dot, .mwr-join #mw-join.mwr-glow { animation:none !important; } }
 </style>
 
 <div class="mw-room">
@@ -165,14 +175,31 @@
             <div>
                 {{-- ================= WAITING ROOM (before joining) ================= --}}
                 <div class="mw-lobby" id="mw-lobby">
-                    <div class="mw-who" id="mw-who">
-                        <div class="mw-avatar">{{ $otherInitial }}</div>
-                        <div class="mw-who-text" id="mw-who-text"></div>
-                    </div>
+                    <section class="mwcalm-hero" id="mw-who">
+                        <div class="mwcalm-text">
+                            <div class="mwr-who">
+                                <div class="mwr-cal" aria-hidden="true">
+                                    <span class="m">{{ $startsAt->isToday() ? 'TODAY' : strtoupper($startsAt->format('D j')) }}</span>
+                                    <span class="d">{{ $startsAt->format('g:i') }}</span>
+                                    <span class="w">{{ $startsAt->format('A') }}</span>
+                                </div>
+                                <div style="min-width:0;">
+                                    <div class="mwcalm-kicker">Video session, {{ $session->duration_minutes }} minutes</div>
+                                    <div class="mwcalm-h1" id="mw-who-head" style="font-size:24px;margin:4px 0 2px;"></div>
+                                </div>
+                            </div>
+                            <div class="mwr-state" role="status">
+                                <span class="dot" aria-hidden="true"></span>
+                                <span class="txt" id="mw-who-text"></span>
+                                <span class="cd" id="mw-countdown" data-starts-in="{{ (int) max(0, round(now()->diffInSeconds($startsAt, false))) }}" hidden></span>
+                            </div>
+                        </div>
+                        @include('partials.calm-art', ['leaves' => $role === 'client', 'breath' => $role === 'client'])
+                    </section>
 
-                    <div class="mw-lobby-row">
-                        <div class="mw-soft">
-                            <h3>Check your camera &amp; microphone</h3>
+                    <div class="mwr-row">
+                        <section class="card" aria-labelledby="mw-av-h">
+                            <h2 class="mwr-h" id="mw-av-h">Check your camera and microphone</h2>
                             <div class="mw-preview" id="mw-preview">
                                 <span id="mw-preview-hint" style="padding:12px;">See how you look and sound before you join.</span>
                             </div>
@@ -181,42 +208,41 @@
                                 <select id="mw-cam-select" aria-label="Camera"></select>
                                 <select id="mw-mic-select" aria-label="Microphone"></select>
                             </div>
-                            <button type="button" class="btn ghost sm" id="mw-preview-btn" style="margin-top:10px;border-radius:999px;width:100%;">Check camera &amp; mic</button>
-                        </div>
-
-                        <div class="mw-soft">
-                            <div class="mw-breathe-wrap">
-                                <div class="mw-breathe" aria-hidden="true"></div>
-                                <div>
-                                    <div class="mw-breathe-label"><span class="in">Breathe in…</span><span class="out">Breathe out…</span></div>
-                                    <div style="font-size:12px;color:var(--ink-500);margin-top:4px;">Follow the circle for a few breaths while you wait.</div>
-                                </div>
+                            <div class="mwr-chips" aria-live="polite">
+                                <span class="mwr-chip" id="mw-chk-cam">Camera</span>
+                                <span class="mwr-chip" id="mw-chk-mic">Microphone</span>
+                                <span class="mwr-chip" id="mw-chk-net">Checking connection…</span>
                             </div>
-                            @if ($role === 'client')
-                                <h3 style="margin-top:16px;">Before you start</h3>
-                                <ul class="mw-checklist">
-                                    <li>Find a private, quiet spot where you won't be overheard.</li>
-                                    <li>Headphones help you hear clearly and keep things private.</li>
-                                    <li>Keep some water and a tissue nearby.</li>
-                                    <li>It's okay to feel nervous — you can go at your own pace.</li>
-                                </ul>
-                            @else
-                                <h3 style="margin-top:16px;">Before you start</h3>
-                                <ul class="mw-checklist">
-                                    <li>Private room, door closed, notifications silenced.</li>
-                                    <li>Your notes on the right save automatically and pre-fill the report.</li>
-                                    <li>{{ $otherName }} gets a chime the moment you join.</li>
-                                </ul>
-                            @endif
-                        </div>
+                            <button type="button" class="btn ghost sm" id="mw-preview-btn" style="margin-top:12px;border-radius:999px;width:100%;">Check camera and mic</button>
+                        </section>
+
+                        <section class="card" aria-labelledby="mw-bs-h">
+                            <h2 class="mwr-h" id="mw-bs-h">Before you start</h2>
+                            <ul class="mwr-ticks" id="mw-ticks">
+                                @foreach ($role === 'client'
+                                    ? ["Somewhere private where I won't be overheard", 'Headphones in, if I have them', 'Water and a tissue nearby']
+                                    : ['Private room, door closed', 'Notifications silenced', 'Notes panel open on the right'] as $item)
+                                    <li><button type="button" class="mwr-tick" aria-pressed="false"><span class="mwr-bx"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5 9-10"/></svg></span>{{ $item }}</button></li>
+                                @endforeach
+                            </ul>
+                            <p class="mwr-tip">
+                                @if ($role === 'client')
+                                    It's okay to feel nervous. You can go at your own pace, and you don't need to prepare anything.
+                                    If you'd like, write what you want to talk about in your notes.
+                                @else
+                                    Your notes save as you type and pre-fill the report. {{ $otherName }} gets a chime the moment you join.
+                                @endif
+                            </p>
+                        </section>
                     </div>
 
-                    <div class="mw-warn mw-hidden" id="mw-warn-lobby"></div>
-
-                    <div style="margin-top:20px;">
-                        <button type="button" class="btn coral" id="mw-join" style="border-radius:999px;padding:12px 34px;font-size:15px;">Join video session</button>
-                    </div>
-                    <div class="mw-status" id="mw-status"></div>
+                    <section class="card mwr-join">
+                        <div class="mw-warn mw-hidden" id="mw-warn-lobby"></div>
+                        <button type="button" class="btn coral" id="mw-join">Join video session</button>
+                        <button type="button" class="btn ghost" id="mw-join-audio" hidden>Join with audio only</button>
+                        <div class="mw-status" id="mw-status"></div>
+                        <p class="mwr-awake">Your screen stays on while you wait, so you won't miss the chime.</p>
+                    </section>
                 </div>
 
                 {{-- ================= IN CALL ================= --}}
@@ -260,7 +286,7 @@
                     @include('partials.mw-illustration', ['variant' => 'sprout', 'size' => 120])
                     <h2 style="font-size:20px;font-weight:800;color:var(--ink-900);margin:10px 0 6px;">Thank you for today, {{ $selfFirst }}.</h2>
                     <p style="font-size:13.5px;color:var(--ink-500);max-width:440px;margin:0 auto 20px;line-height:1.55;">
-                        Give yourself a moment before jumping back into your day — a glass of water, a few slow breaths.
+                        Take a moment before you go back to your day. A glass of water and a few slow breaths can help.
                         Your notes from this session are saved in your journal.
                     </p>
                     @if (! empty($jsConfig['canRate']))
@@ -274,14 +300,14 @@
                                 @endfor
                             </div>
                             <textarea class="mw-field" name="comment" maxlength="2000" placeholder="Anything you'd like to tell us? (optional)"></textarea>
-                            <div style="font-size:11px;color:var(--ink-500);margin-top:4px;">Only the Mindwell team reads comments — your therapist doesn't see them.</div>
+                            <div style="font-size:11px;color:var(--ink-500);margin-top:4px;">Only the Mindwell team reads comments. Your therapist does not see them.</div>
                             <div id="mw-rate-error" class="mw-hidden" style="font-size:12px;color:var(--danger, #c0392b);margin-top:6px;"></div>
                             <div style="display:flex;gap:8px;justify-content:center;margin-top:12px;">
                                 <button type="submit" class="btn primary sm" style="border-radius:999px;padding-left:20px;padding-right:20px;">Send feedback</button>
                                 <button type="button" class="btn ghost sm" id="mw-rate-skip" style="border-radius:999px;">Skip</button>
                             </div>
                         </form>
-                        <div class="mw-rate mw-hidden" id="mw-rate-done" style="font-size:13px;color:var(--ink-700);">Thank you for your feedback — it helps us look after you well.</div>
+                        <div class="mw-rate mw-hidden" id="mw-rate-done" style="font-size:13px;color:var(--ink-700);">Thank you for your feedback. It helps us improve.</div>
                     @endif
                     <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
                         <a href="{{ route('journal.index') }}" class="btn coral" style="border-radius:999px;">Open my journal</a>
@@ -295,12 +321,12 @@
                 <div style="font-size:15px;font-weight:800;color:var(--ink-900);">{{ $role === 'client' ? 'Your notes' : 'Session notes' }}</div>
                 <div style="font-size:11.5px;color:var(--ink-500);margin:2px 0 10px;line-height:1.45;">
                     @if ($role === 'client')
-                        Jot down thoughts, things to try, or questions for next time. Saved to your journal and private unless you share them.
+                        Before you join, write what you'd like to talk about. During the session, add thoughts or things to try. Saved to your journal and private unless you share them.
                     @else
                         Private to you. Saved as you type, and pre-filled into your report when you close the session.
                     @endif
                 </div>
-                <textarea class="mw-field" id="mw-notes" placeholder="{{ $role === 'client' ? 'Start typing…' : 'Presenting concerns, key moments, interventions…' }}">{{ $notesBody }}</textarea>
+                <textarea class="mw-field" id="mw-notes" placeholder="{{ $role === 'client' ? 'What would you like to talk about today?' : 'Presenting concerns, key moments, interventions…' }}">{{ $notesBody }}</textarea>
                 <div class="mw-notes-foot">
                     @if ($role === 'client')
                         <label style="display:inline-flex;align-items:center;gap:7px;cursor:pointer;color:var(--ink-700);">
@@ -341,12 +367,19 @@
 
         {{-- Waiting-room copy, per role, chosen by the script below. Kept in the page so
              Blade escapes every name and time; JS reads it as plain text only. --}}
-        <template id="mw-copy-client-early">Your session starts at {{ $startsAt->format('g:i A') }}. Keep this page open — the moment {{ $otherName }} opens the room, you'll hear a chime and can join straight away.</template>
-        <template id="mw-copy-client-open">Join when you're ready — {{ $otherName }} will see and hear you once you're both in.</template>
+        <template id="mw-copy-client-early">Keep this page open. When {{ $otherName }} opens the room, you'll hear a chime and can join.</template>
+        <template id="mw-copy-client-open">Join when you are ready. {{ $otherName }} will see and hear you once you are both in.</template>
         <template id="mw-copy-client-ready">{{ $otherName }} is ready for you. Join now.</template>
         <template id="mw-copy-therapist-early">You can open this room from {{ $opensAt->format('g:i A') }} on {{ $opensAt->format('l, M j') }}.</template>
-        <template id="mw-copy-therapist-open">Open the room whenever you're ready — {{ $otherName }} will be alerted and can join early.</template>
+        <template id="mw-copy-therapist-open">Open the room when you are ready. {{ $otherName }} will be told and can join early.</template>
         <template id="mw-copy-therapist-ready">{{ $otherName }} is already in the room, waiting for you.</template>
+        {{-- Short headlines for the waiting hero (2026-11-06). --}}
+        <template id="mw-head-client-early">Take a breath. You're early.</template>
+        <template id="mw-head-client-open">The room is open</template>
+        <template id="mw-head-client-ready">{{ $otherName }} is ready for you</template>
+        <template id="mw-head-therapist-early">The room opens at {{ $opensAt->format('g:i A') }}</template>
+        <template id="mw-head-therapist-open">Ready when you are</template>
+        <template id="mw-head-therapist-ready">{{ $otherName }} is waiting for you</template>
 
         <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.22.3/dist/livekit-client.umd.js"
                 integrity="sha384-G/xxtkVytOx/ia9Q8MXxM+V0ohsaY1fZAgVP3iSGTPz4wJ0s3+ulJNKXh/gnzEDZ"
@@ -362,6 +395,7 @@
             var baseTitle = document.title;
 
             function copy(which) { return $('mw-copy-' + cfg.role + '-' + which).content.textContent.trim(); }
+            function head(which) { return $('mw-head-' + cfg.role + '-' + which).content.textContent.trim(); }
             function setStatus(text) { $('mw-status').textContent = text; }
             function setCallStatus(text) { $('mw-call-status').textContent = text; }
             function show(el, on) { el.classList.toggle('mw-hidden', !on); }
@@ -409,20 +443,55 @@
             // ---- Waiting room
             function renderWaiting() {
                 if (joined) return;
-                var ready = otherLive && state === 'open';
-                $('mw-who').classList.toggle('mw-ready', ready);
+                var ready = otherLive && state === 'open', which = ready ? 'ready' : (state === 'open' ? 'open' : 'early');
+                $('mw-lobby').classList.toggle('mw-ready', ready);
+                $('mw-lobby').classList.toggle('mw-open', state === 'open' && !ready);
                 $('mw-join').disabled = state !== 'open';
-                var t = $('mw-who-text'); t.innerHTML = '';
-                if (ready) { var dot = document.createElement('span'); dot.className = 'mw-live-dot'; t.appendChild(dot); }
-                t.appendChild(document.createTextNode(copy(ready ? 'ready' : (state === 'open' ? 'open' : 'early'))));
+                $('mw-join-audio').disabled = state !== 'open';
+                $('mw-join').classList.toggle('mwr-glow', ready);
+                $('mw-who-text').textContent = copy(which);
+                $('mw-who-head').textContent = head(which);
+                tickCountdown();
+                renderWaitingStatus();
+            }
+            function renderWaitingStatus() {
                 setStatus(state === 'open'
                     ? (previewVideo || previewAudio ? "You're all set." : 'Your browser will ask for camera and microphone access when you join.')
-                    : "Waiting… this page checks every few seconds, so there's no need to refresh.");
+                    : "This page checks every few seconds, so there's no need to refresh.");
             }
+
+            // ---- Countdown to the start time (2026-11-06), from the server's clock
+            var cdEl = $('mw-countdown'), startsIn = parseInt(cdEl.dataset.startsIn || '0', 10), cdBase = Date.now();
+            function tickCountdown() {
+                var left = Math.round(startsIn - (Date.now() - cdBase) / 1000);
+                var on = !joined && left > 0 && !(otherLive && state === 'open');
+                cdEl.hidden = !on;
+                if (!on) return;
+                var m = Math.floor(left / 60), sec = left % 60;
+                cdEl.textContent = 'Starts in ' + (left >= 3600
+                    ? Math.floor(left / 3600) + ' h ' + Math.floor((left % 3600) / 60) + ' min'
+                    : m + ':' + (sec < 10 ? '0' : '') + sec);
+            }
+            setInterval(tickCountdown, 1000);
+
+            // ---- Connection check, screen kept on, get-ready ticks (2026-11-06)
+            function setChip(id, kind, text) { var c = $(id); c.className = 'mwr-chip' + (kind ? ' ' + kind : ''); c.textContent = text; }
+            MwCalm.keepAwake();
+            MwCalm.onNet(function (q) {
+                setChip('mw-chk-net', { good: 'ok', weak: 'warn', off: 'bad' }[q] || '',
+                    { good: 'Connection good', weak: 'Connection is weak', off: "You're offline" }[q] || 'Checking connection…');
+                $('mw-join-audio').hidden = q !== 'weak';
+                if (q === 'weak' && !joined) setStatus('Your connection is weak. Move to where your signal is strongest, or join with audio only.');
+                else if (!joined) renderWaitingStatus();
+            });
+            $('mw-ticks').addEventListener('click', function (e) {
+                var b = e.target.closest('.mwr-tick'); if (!b) return;
+                b.setAttribute('aria-pressed', b.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
+            });
 
             async function poll() {
                 try {
-                    var r = await fetch(cfg.statusUrl, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
+                    var r = await MwCalm.fetch(cfg.statusUrl, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
                     if (!r.ok) return;
                     var s = await r.json();
                     if (s.state === 'ended' || s.state === 'closed') { window.location.reload(); return; }
@@ -458,10 +527,10 @@
                         var j = await r.json(); notesLocked = true; notes.readOnly = true; notesState.textContent = j.message || 'Notes are locked.'; return;
                     }
                     if (r.status === 419) { notesState.textContent = 'Please reload the page to keep saving.'; return; }
-                    notesState.textContent = r.ok ? 'Saved' : "Couldn't save — will retry";
+                    notesState.textContent = r.ok ? 'Saved' : "Not saved. Trying again";
                     dirty = !r.ok;
                     if (!r.ok) saveTimer = setTimeout(saveNotes, 5000);
-                } catch (e) { notesState.textContent = "Offline — will retry"; saveTimer = setTimeout(saveNotes, 5000); }
+                } catch (e) { notesState.textContent = "Offline. Trying again"; saveTimer = setTimeout(saveNotes, 5000); }
             }
             notes.addEventListener('input', function () { dirty = true; notesState.textContent = 'Editing…'; clearTimeout(saveTimer); saveTimer = setTimeout(saveNotes, 1200); });
             if (shareBox) shareBox.addEventListener('change', saveNotes);
@@ -482,7 +551,7 @@
             });
 
             if (typeof LivekitClient === 'undefined') {
-                $('mw-join').disabled = true; $('mw-preview-btn').disabled = true;
+                $('mw-join').disabled = true; $('mw-join-audio').disabled = true; $('mw-preview-btn').disabled = true;
                 clearInterval(pollTimer);
                 setStatus("The video component couldn't load. Check your internet connection and reload the page.");
                 return;
@@ -539,6 +608,8 @@
                 } else {
                     $('mw-preview-hint').textContent = 'Camera unavailable';
                 }
+                setChip('mw-chk-cam', previewVideo ? 'ok' : 'bad', previewVideo ? 'Camera works' : 'Camera not working');
+                setChip('mw-chk-mic', previewAudio ? 'ok' : 'bad', previewAudio ? 'Microphone works' : 'Microphone not working');
                 startMeter(previewAudio);
                 await fillDevices();
                 $('mw-preview-btn').textContent = 'Try again';
@@ -580,15 +651,23 @@
                 el.textContent = left > 1 ? left + ' min left' : (left === 1 ? '1 min left' : 'Session time is up');
             }
 
+            // Weak connection: join without the camera (2026-11-06). Video can be turned on later.
+            var audioOnly = false;
+            $('mw-join-audio').addEventListener('click', function () {
+                audioOnly = true;
+                if (previewVideo) { previewVideo.stop(); previewVideo = null; }
+                $('mw-join').click();
+            });
+
             $('mw-join').addEventListener('click', async function () {
                 var btn = this;
-                btn.disabled = true; stopFlash(); setStatus('Connecting…');
+                btn.disabled = true; $('mw-join-audio').disabled = true; stopFlash(); setStatus('Connecting…');
 
                 var creds;
                 try {
                     var fd = new FormData(); fd.append('_token', cfg.csrf);
                     var r = await fetch(cfg.tokenUrl, { method: 'POST', body: fd, credentials: 'same-origin', headers: { 'Accept': 'application/json' } });
-                    if (r.status === 419) { setStatus('This page has been open a long time — please reload it, then join.'); return; }
+                    if (r.status === 419) { setStatus('This page has been open for a long time. Please reload it, then join.'); return; }
                     creds = await r.json();
                     if (!r.ok) {
                         if (creds.state === 'ended' || creds.state === 'closed') { window.location.reload(); return; }
@@ -596,7 +675,7 @@
                         renderWaiting(); setStatus(creds.message || "Couldn't join right now.");
                         return;
                     }
-                } catch (e) { setStatus("Couldn't reach the server. Check your connection and try again."); btn.disabled = false; return; }
+                } catch (e) { setStatus("Couldn't reach the server. Check your connection and try again."); btn.disabled = false; $('mw-join-audio').disabled = false; audioOnly = false; return; }
 
                 room = new LK.Room({ adaptiveStream: true, dynacast: true });
                 room.on(RoomEvent.TrackSubscribed, function (track) {
@@ -623,7 +702,7 @@
                 });
 
                 try { await room.connect(creds.url, creds.token); }
-                catch (e) { setStatus("Couldn't connect to the video service: " + (e && e.message ? e.message : e)); btn.disabled = false; room = null; return; }
+                catch (e) { setStatus("Couldn't connect to the video service: " + (e && e.message ? e.message : e)); btn.disabled = false; $('mw-join-audio').disabled = false; audioOnly = false; room = null; return; }
 
                 joined = true;
                 clearInterval(pollTimer);
@@ -637,7 +716,8 @@
                 var lp = room.localParticipant;
                 // Camera and mic are started separately so one failing doesn't take the
                 // other down; any failure stays visible in the warning box.
-                if (previewVideo) { try { await lp.publishTrack(previewVideo); } catch (e) { setProblem('camera', explainMediaError('camera', e)); } }
+                if (audioOnly) { /* camera stays off; the camera button turns it on */ }
+                else if (previewVideo) { try { await lp.publishTrack(previewVideo); } catch (e) { setProblem('camera', explainMediaError('camera', e)); } }
                 else { try { await lp.setCameraEnabled(true); setProblem('camera', null); } catch (e) { setProblem('camera', explainMediaError('camera', e)); } }
                 if (previewAudio) { try { await lp.publishTrack(previewAudio); } catch (e) { setProblem('microphone', explainMediaError('microphone', e)); } }
                 else { try { await lp.setMicrophoneEnabled(true); setProblem('microphone', null); } catch (e) { setProblem('microphone', explainMediaError('microphone', e)); } }
@@ -672,7 +752,7 @@
                     show(rateForm, false);
                     if (!payload.skip) { show($('mw-rate-done'), true); }
                 } catch (e) {
-                    err.textContent = "That didn't send — please try again.";
+                    err.textContent = "That did not send. Please try again.";
                     show(err, true);
                 }
             }
@@ -704,6 +784,7 @@
                 beacon(true);
                 if (dirty) { await saveNotes(); }
                 if (room) { await room.disconnect(); }
+                MwCalm.letSleep();
                 if (cfg.role === 'therapist') { window.location.href = cfg.leaveUrl; return; }
                 show($('mw-call'), false); show($('mw-timer'), false); show($('mw-thanks'), true);
                 window.scrollTo({ top: 0, behavior: 'smooth' });

@@ -205,7 +205,7 @@ class SubscriptionController extends Controller
 
         if ($subscription->renewal_paid_at) {
             return redirect()->route('subscription.index')
-                ->with('status', 'Your plan is already renewed — the next period starts on '.$subscription->current_period_end->format('D j M').'.');
+                ->with('status', 'Your plan is already renewed. The next period starts on '.$subscription->current_period_end->format('D j M').'.');
         }
 
         if (! $subscription->canRenew()) {
@@ -257,7 +257,7 @@ class SubscriptionController extends Controller
 
         // Normal Mobile Money case — client approves on their phone; see
         // FlutterwavePaymentController::waiting().
-        return redirect()->route('payments.flutterwave.waiting', $result['transaction']);
+        return redirect()->route('payments.waiting', $result['transaction']);
     }
 
     /**
@@ -357,7 +357,7 @@ class SubscriptionController extends Controller
             // once one has gone through), but if two were started at once, flag it for a
             // refund rather than silently swallowing the money.
             AuditLog::record($request, 'client_subscription.duplicate_renewal',
-                "{$userName} paid twice to renew \"{$plan->name}\" — the second payment needs a refund.", [
+                "{$userName} paid twice to renew \"{$plan->name}\". The second payment needs a refund.", [
                     'client_subscription_id' => $subscription->id,
                     'payment_transaction_id' => $transaction->id,
                 ]);

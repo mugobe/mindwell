@@ -8,7 +8,7 @@
         <h1>{{ $q !== '' ? 'Results for “'.$q.'”' : 'Search' }}</h1>
         <div class="sub">
             @if (mb_strlen($q) < 2)
-                Type at least two letters — a name, email, client ID (e.g. 0007) or receipt number.
+                Type at least two letters: a name, email, client ID (e.g. 0007) or receipt number.
             @else
                 {{ $total }} {{ $total === 1 ? 'match' : 'matches' }} across clients, therapists and payments.
             @endif

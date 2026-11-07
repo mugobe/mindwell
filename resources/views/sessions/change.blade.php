@@ -22,23 +22,25 @@
     </div>
 
     @if ($pending)
-        <div class="card" style="background:var(--mw-gold, #F6E1A8);border:none;">
-            <div style="font-size:14px;font-weight:800;color:var(--ink-900);">Waiting for our team</div>
-            <div style="font-size:13px;color:var(--ink-700);margin-top:4px;">
+        <div class="mw-note info top">
+            <div class="mw-note-body">
+            <div class="mw-note-title">Waiting for our team</div>
+            <div class="mw-note-text">
                 @if ($pending->requester_role === 'client')
                     You asked to {{ $pending->type === 'cancel' ? 'cancel this session' : 'move it to '.$pending->proposed_at?->format('l, j F · g:i A') }}
                     {{ $pending->created_at->diffForHumans() }}.
                 @else
                     A change to this session is being arranged with {{ $therapistName }}.
                 @endif
-                Your session stays as it is until we confirm — we'll email you.
+                Your session stays as it is until we confirm. We will email you.
             </div>
             @if ($pending->requester_role === 'client')
                 <form method="POST" action="{{ route('sessions.change.withdraw', $pending) }}" style="margin-top:10px;">
                     @csrf
-                    <button type="submit" class="btn ghost sm" style="border-radius:999px;background:#fff;">Withdraw my request</button>
+                    <button type="submit" class="mw-pill-btn">Withdraw my request</button>
                 </form>
             @endif
+            </div>
         </div>
     @else
         <div class="card" style="margin-bottom:14px;">

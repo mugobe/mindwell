@@ -65,7 +65,7 @@ class SessionChangeController extends Controller
         $changes->request($request, $therapySession, $request->user(), 'client', $data['type'], $newAt, $data['reason'] ?? null);
 
         return redirect()->route('sessions.change', $therapySession)
-            ->with('status', 'Request sent. Our team will confirm it and let you know — your session stays as it is until then.');
+            ->with('status', 'Request sent. Our team will confirm it and let you know. Your session stays as it is until then.');
     }
 
     public function withdraw(Request $request, ScheduleChangeRequest $changeRequest, ScheduleChanges $changes): RedirectResponse

@@ -30,14 +30,16 @@ class AdminOverview
     public function attention(): array
     {
         $items = [
-            ['crisis', 'Open crisis flags', 'Someone may be at risk — act first', fn () => CrisisFlag::where('status', 'open')->count(), 'admin.crisis.index', 'urgent', 'alert'],
-            ['lobby', 'Clients waiting in the lobby', 'Automatic matching couldn\'t place them — assign a therapist', fn () => TherapySession::where('status', 'routing')->count(), 'admin.session-routing.index', 'urgent', 'route'],
+            ['crisis', 'Open crisis flags', 'Someone may be at risk. Act on these first.', fn () => CrisisFlag::where('status', 'open')->count(), 'admin.crisis.index', 'urgent', 'alert'],
+            ['lobby', 'Clients waiting in the lobby', 'Automatic matching could not place them. Assign a therapist.', fn () => TherapySession::where('status', 'routing')->count(), 'admin.session-routing.index', 'urgent', 'route'],
             ['approvals', 'Bookings to approve', 'Confirm or decline new bookings and follow-ups', fn () => TherapySession::where('status', 'pending_approval')->count(), 'admin.session-routing.index', 'warm', 'check'],
             ['schedule', 'Schedule requests', 'Moves, cancellations and time off', fn () => ScheduleChangeRequest::where('status', 'pending')->count() + TimeOff::where('status', 'pending')->count(), 'admin.schedule-requests.index', 'warm', 'swap'],
             ['referrals', 'Referrals to place', 'Closed sessions waiting for a facility', fn () => TherapySession::where('closure_outcome', 'refer_to_specialist')->whereNull('referral_facility_id')->count(), 'admin.referrals.index', 'warm', 'share'],
             ['intake', 'New high-risk intakes', 'Crisis or high-risk screenings in the last 7 days', fn () => \App\Models\IntakeAssessment::whereIn('risk_level', ['crisis', 'high'])->where('created_at', '>=', now()->subDays(7))->count(), 'admin.intake.index', 'warm', 'inbox'],
-            ['credentialing', 'Therapists to approve', 'New sign-ups waiting for credential checks', fn () => TherapistProfile::where('credentials_verified', false)->count(), 'admin.therapists.index', 'teal', 'badge'],
-            ['licence', 'Licence changes to review', 'Therapists who updated their licence details', fn () => TherapistProfile::whereNotNull('license_change_requested_at')->count(), 'admin.therapists.index', 'teal', 'badge'],
+            ['unapplied', 'Payments to refund', 'Late payments for something already paid', fn () => PaymentTransaction::where('status', 'successful')->whereNotNull('meta->unapplied')->whereNull('refunded_at')->count(), 'admin.payments.index', 'urgent', 'alert'],
+            ['applications', 'Therapist applications', 'Submitted applications waiting for your review', fn () => \App\Models\TherapistApplication::where('status', 'submitted')->count(), 'admin.applications.index', 'purple', 'badge'],
+            ['credentialing', 'Therapists to approve', 'Older sign-ups waiting for credential checks', fn () => TherapistProfile::where('credentials_verified', false)->whereDoesntHave('application')->count(), 'admin.therapists.index', 'purple', 'badge'],
+            ['licence', 'Licence changes to review', 'Therapists who updated their licence details', fn () => TherapistProfile::whereNotNull('license_change_requested_at')->count(), 'admin.therapists.index', 'purple', 'badge'],
         ];
 
         $out = [];
@@ -49,6 +51,63 @@ class AdminOverview
         }
 
         return $out;
+    }
+
+    /**
+     * Six points for each number tile's trend line (2026-11-03), oldest first:
+     * sessions per week, net revenue per month, active clients per week, rating per month.
+     */
+    public function series(): array
+    {
+        $now = Carbon::now();
+        $weeks = collect(range(5, 0))->map(fn ($i) => $now->copy()->startOfWeek(Carbon::MONDAY)->subWeeks($i));
+        $months = collect(range(5, 0))->map(fn ($i) => $now->copy()->startOfMonth()->subMonthsNoOverflow($i));
+
+        $sessions = $weeks->map(fn ($w) => (int) $this->safe(fn () => TherapySession::whereIn('status', ['scheduled', 'completed'])
+            ->whereBetween('scheduled_at', [$w, $w->copy()->endOfWeek(Carbon::SUNDAY)])->count()))->all();
+
+        $revenue = $months->map(fn ($m) => (float) $this->safe(fn () => PaymentTransaction::where('status', 'successful')
+            ->whereBetween('created_at', [$m, $m->copy()->endOfMonth()])
+            ->get(['amount', 'refund_amount'])
+            ->sum(fn ($p) => max(0, (float) $p->amount - (float) ($p->refund_amount ?? 0)))))->all();
+
+        $active = $weeks->map(fn ($w) => (int) $this->safe(fn () => TherapySession::whereIn('status', ['scheduled', 'completed'])
+            ->whereBetween('scheduled_at', [$w->copy()->endOfWeek(Carbon::SUNDAY)->subDays(60), $w->copy()->endOfWeek(Carbon::SUNDAY)])
+            ->distinct()->count('client_profile_id')))->all();
+
+        $rating = $months->map(fn ($m) => $this->safe(function () use ($m) {
+            $avg = SessionRating::whereNotNull('rating')->whereBetween('created_at', [$m, $m->copy()->endOfMonth()])->avg('rating');
+
+            return $avg !== null ? round((float) $avg, 2) : null;
+        }, null))->all();
+
+        return compact('sessions', 'revenue', 'active', 'rating');
+    }
+
+    /**
+     * The payment service in use and how it is set up (2026-11-03), for the Overview card.
+     *
+     * @return array{name: string, sandbox: bool, configured: bool, last_callback: ?\Illuminate\Support\Carbon}
+     */
+    public function paymentService(): array
+    {
+        if (config('payments.gateway') === 'marzpay') {
+            $last = \Illuminate\Support\Facades\Cache::get('marzpay.last_callback_at');
+
+            return [
+                'name' => 'MarzPay',
+                'sandbox' => (bool) config('marzpay.sandbox'),
+                'configured' => filled(config('marzpay.api_key')) && filled(config('marzpay.api_secret')),
+                'last_callback' => $last ? Carbon::parse($last) : null,
+            ];
+        }
+
+        return [
+            'name' => 'Flutterwave',
+            'sandbox' => str_contains((string) config('flutterwave.base_url'), 'sandbox'),
+            'configured' => filled(config('flutterwave.client_id')) && filled(config('flutterwave.client_secret')),
+            'last_callback' => null,
+        ];
     }
 
     /** Today's sessions across every therapist, in time order. */

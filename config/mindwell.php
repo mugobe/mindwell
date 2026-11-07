@@ -28,9 +28,17 @@ return [
     // Confirmed by the client: "up to ~10 minutes".
     'lobby_target_minutes' => 10,
 
+    // How far ahead clients can book a therapist themselves (2026-11-07: the booking page
+    // became a calendar, so it can show more than one week).
+    'booking_days_ahead' => (int) env('BOOKING_DAYS_AHEAD', 28),
+
     // Video room join window (added 2026-09-28 with LiveKit). Client and therapist can
     // enter a session's video room from this many minutes BEFORE its scheduled start...
     'video_join_early_minutes' => 10,
+
+    // The striped "LOCAL / TEST SITE · Payments: …" strip at the top of staff pages
+    // (2026-11-03). Off unless TEST_RIBBON=true, and never shown on the live site.
+    'test_ribbon' => (bool) env('TEST_RIBBON', false),
 
     // ...until this many minutes AFTER its scheduled end (start + duration). Defaults
     // chosen by the assistant, not yet confirmed with Dr. Ntabade — easy to change here.
@@ -53,7 +61,7 @@ return [
     // practice's real details before going live — receipts may be sent to employers or
     // insurers. Blank ones are simply left off the receipt.
     'receipt' => [
-        'business_name' => env('MINDWELL_BUSINESS_NAME', 'Mindwell'),
+        'business_name' => env('MINDWELL_BUSINESS_NAME', 'Mindwell Consultancy Ltd'),
         'address' => env('MINDWELL_BUSINESS_ADDRESS'),
         'phone' => env('MINDWELL_BUSINESS_PHONE'),
         'email' => env('MINDWELL_BUSINESS_EMAIL'),

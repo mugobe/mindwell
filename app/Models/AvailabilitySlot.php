@@ -13,6 +13,7 @@ class AvailabilitySlot extends Model
     protected $fillable = [
         'therapist_id',
         'day_of_week',
+        'on_date', // 2026-11-07: the date of a one-off (not weekly) block
         'start_time',
         'end_time',
         'is_recurring',
@@ -22,6 +23,7 @@ class AvailabilitySlot extends Model
     {
         return [
             'is_recurring' => 'boolean',
+            'on_date' => 'date',
         ];
     }
 

@@ -133,10 +133,10 @@
             @endforeach
             <div style="font-size:11px;color:var(--ink-300);">From the last closed session ({{ $latestCompleted->closed_at?->format('j M Y') }}).</div>
         @else
-            <p style="font-size:12.5px;color:var(--ink-500);margin:0;">Nothing yet — this fills in once a session is closed with notes.</p>
+            <p style="font-size:12.5px;color:var(--ink-500);margin:0;">Nothing yet. This fills in once a session is closed with notes.</p>
         @endif
         @if ($sharedNotesCount > 0)
-            <div style="font-size:12px;color:var(--ink-500);margin-top:8px;">{{ $sharedNotesCount }} journal note(s) shared by the client — see them when you close a session.</div>
+            <div style="font-size:12px;color:var(--ink-500);margin-top:8px;">{{ $sharedNotesCount }} journal note(s) shared by the client. You will see them when you close a session.</div>
         @endif
     </div>
 </div>
@@ -148,6 +148,166 @@
         @include('partials.about-client', ['profileId' => $summary['profile']->id])
     </div>
 @endif
+
+{{-- Care plan (2026-11-07, roadmap 36, 39, 77): goals, homework and resources for this client.
+     Therapists manage them here; admins see them read-only. The client sees them in My therapy. --}}
+@php
+    $mwCid = $summary['profile']->id;
+    $mwGoals = \App\Models\TherapyGoal::with('updates')->where('client_profile_id', $mwCid)->orderByRaw("CASE status WHEN 'active' THEN 0 WHEN 'achieved' THEN 1 ELSE 2 END")->latest()->get();
+    $mwHw = \App\Models\Homework::with('resource')->where('client_profile_id', $mwCid)->orderByRaw("CASE WHEN status = 'done' AND reviewed_at IS NULL THEN 0 WHEN status = 'assigned' THEN 1 ELSE 2 END")->latest()->get();
+    $mwShares = \App\Models\ResourceShare::with('resource')->where('client_profile_id', $mwCid)->latest()->limit(20)->get();
+    $mwLib = $viewer === 'therapist' ? \App\Models\Resource::where('is_published', true)->orderBy('title')->get(['id', 'title', 'kind']) : collect();
+    $mwCanEdit = $viewer === 'therapist';
+@endphp
+<style>
+    .mwc3 { display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:14px; margin-bottom:16px; }
+    .mwc3 .card { margin:0; }
+    .mwc-item-row { padding:12px 0; }
+    .mwc-item-row + .mwc-item-row { border-top:1px solid rgba(16,48,43,.07); }
+    .mwc-item-row .t { font-size:13.5px; font-weight:800; color:var(--ink-900, #1d2b29); }
+    .mwc-item-row .s { font-size:12.5px; color:var(--ink-500); margin-top:2px; }
+    .mwc-pbar { height:8px; border-radius:4px; background:rgba(16,48,43,.08); overflow:hidden; margin-top:8px; }
+    .mwc-pbar i { display:block; height:100%; background:#00A87C; border-radius:4px; }
+    .mwc-mini summary { list-style:none; cursor:pointer; font-size:12.5px; font-weight:700; color:var(--teal-600, #2f6f66); margin-top:6px; }
+    .mwc-mini summary::-webkit-details-marker { display:none; }
+    .mwc-mini form { margin-top:8px; display:grid; gap:8px; }
+    .mwc-add { margin-top:12px; padding-top:12px; border-top:1px dashed rgba(16,48,43,.15); }
+    .mwc-add summary { list-style:none; cursor:pointer; }
+    .mwc-add summary::-webkit-details-marker { display:none; }
+    .mwc-add form { display:grid; gap:8px; margin-top:10px; }
+    .mwc-reply { margin-top:8px; padding:10px 12px; border-radius:10px; background:rgba(16,48,43,.04); font-size:13px; color:var(--ink-700); white-space:pre-line; }
+</style>
+<div id="care" class="section-title" style="margin:6px 0 10px;">Care plan</div>
+@if ($errors->any())<div class="mw-alert danger" style="margin-bottom:12px;">{{ $errors->first() }}</div>@endif
+<div class="mwc3">
+    {{-- Goals --}}
+    <div class="card">
+        <div class="mw-card-head" style="padding:0 0 6px;border:0;"><h2>Goals</h2><span style="font-size:12px;color:var(--ink-500);">{{ $mwGoals->where('status', 'active')->count() }} active</span></div>
+        @forelse ($mwGoals as $g)
+            <div class="mwc-item-row">
+                <div class="t">{{ $g->title }} <span class="pill {{ $g->status === 'achieved' ? 'success' : ($g->status === 'active' ? 'teal' : '') }}" style="margin-left:4px;">{{ $g->statusLabel() }}</span></div>
+                @if ($g->details)<div class="s" style="white-space:pre-line;">{{ $g->details }}</div>@endif
+                <div class="mwc-pbar"><i style="width:{{ $g->progress }}%;"></i></div>
+                <div class="s">{{ $g->progress }}%{{ $g->target_on ? ' · aim '.$g->target_on->format('j M Y') : '' }}</div>
+                @if ($u = $g->updates->first())
+                    <div class="s">Last update by {{ $u->by_role === 'client' ? 'the client' : 'the therapist' }}, {{ $u->created_at->format('j M') }}{{ $u->note ? ': "'.\Illuminate\Support\Str::limit($u->note, 120).'"' : '' }}</div>
+                @endif
+                @if ($mwCanEdit)
+                    <details class="mwc-mini">
+                        <summary>Update</summary>
+                        <form method="POST" action="{{ route('therapist.care.goals.update', $g) }}">
+                            @csrf @method('PATCH')
+                            <select class="mw-field" name="status" aria-label="Status">
+                                @foreach (\App\Models\TherapyGoal::STATUSES as $v => $l)<option value="{{ $v }}" @selected($g->status === $v)>{{ $l }}</option>@endforeach
+                            </select>
+                            <input class="mw-field" type="number" name="progress" min="0" max="100" step="5" value="{{ $g->progress }}" aria-label="Progress in percent">
+                            <input class="mw-field" name="note" maxlength="1000" placeholder="Note (optional)">
+                            <button class="btn primary sm" type="submit">Save</button>
+                        </form>
+                        <form method="POST" action="{{ route('therapist.care.goals.destroy', $g) }}" onsubmit="return confirm('Remove this goal?');">
+                            @csrf @method('DELETE')
+                            <button class="btn ghost sm" type="submit" style="color:#B3261E;">Remove goal</button>
+                        </form>
+                    </details>
+                @endif
+            </div>
+        @empty
+            <div class="s" style="font-size:12.5px;color:var(--ink-500);">No goals yet.</div>
+        @endforelse
+        @if ($mwCanEdit)
+            <details class="mwc-add">
+                <summary class="btn ghost sm">Add a goal</summary>
+                <form method="POST" action="{{ route('therapist.care.goals.store', $summary['profile']) }}">
+                    @csrf
+                    <input class="mw-field" name="title" maxlength="200" placeholder="For example: Sleep 7 hours most nights" required>
+                    <textarea class="mw-field" name="details" rows="2" maxlength="2000" placeholder="Details or steps (optional)"></textarea>
+                    <label class="mw-label" style="margin:0;">Aim for (optional)<input class="mw-field" type="date" name="target_on" min="{{ now()->toDateString() }}"></label>
+                    <button class="btn primary sm" type="submit">Add goal</button>
+                </form>
+            </details>
+        @endif
+    </div>
+
+    {{-- Homework --}}
+    <div class="card">
+        <div class="mw-card-head" style="padding:0 0 6px;border:0;"><h2>Homework</h2><span style="font-size:12px;color:var(--ink-500);">{{ $mwHw->where('status', 'done')->whereNull('reviewed_at')->count() }} to review</span></div>
+        @forelse ($mwHw as $h)
+            <div class="mwc-item-row">
+                <div class="t">{{ $h->title }}
+                    @if ($h->isDone() && ! $h->reviewed_at)<span class="pill warn" style="margin-left:4px;">Answered</span>
+                    @elseif ($h->isDone())<span class="pill success" style="margin-left:4px;">Reviewed</span>
+                    @elseif ($h->isOverdue())<span class="pill danger" style="margin-left:4px;">Past due</span>
+                    @else<span class="pill" style="margin-left:4px;">Given</span>@endif
+                </div>
+                <div class="s">{{ $h->created_at->format('j M') }}{{ $h->due_on ? ' · due '.$h->due_on->format('j M') : '' }}{{ $h->resource ? ' · "'.\Illuminate\Support\Str::limit($h->resource->title, 40).'"' : '' }}</div>
+                @if ($h->isDone())
+                    @if ($h->reply)<div class="mwc-reply">{{ \Illuminate\Support\Str::limit($h->reply, 600) }}</div>@endif
+                    @if ($h->reply_file_path)<div class="s"><a href="{{ $h->replyFileUrl() }}" target="_blank" rel="noopener">{{ $h->reply_file_name }}</a></div>@endif
+                    @if ($mwCanEdit && ! $h->reviewed_at)
+                        <form method="POST" action="{{ route('therapist.care.homework.review', $h) }}" style="margin-top:8px;">@csrf<button class="btn primary sm" type="submit">Mark reviewed</button></form>
+                    @endif
+                @endif
+                @if ($mwCanEdit)
+                    <form method="POST" action="{{ route('therapist.care.homework.destroy', $h) }}" onsubmit="return confirm('Remove this homework?');" style="margin-top:6px;">
+                        @csrf @method('DELETE')
+                        <button class="btn ghost sm" type="submit" style="color:#B3261E;padding:4px 10px;">Remove</button>
+                    </form>
+                @endif
+            </div>
+        @empty
+            <div class="s" style="font-size:12.5px;color:var(--ink-500);">No homework yet.</div>
+        @endforelse
+        @if ($mwCanEdit)
+            <details class="mwc-add">
+                <summary class="btn ghost sm">Give homework</summary>
+                <form method="POST" action="{{ route('therapist.care.homework.store', $summary['profile']) }}">
+                    @csrf
+                    <input class="mw-field" name="title" maxlength="200" placeholder="For example: Thought record, 3 times this week" required>
+                    <textarea class="mw-field" name="instructions" rows="3" maxlength="5000" placeholder="What to do (optional)"></textarea>
+                    <select class="mw-field" name="resource_id" aria-label="Worksheet or resource">
+                        <option value="">No worksheet</option>
+                        @foreach ($mwLib as $r)<option value="{{ $r->id }}">{{ $r->title }} ({{ $r->kindLabel() }})</option>@endforeach
+                    </select>
+                    <label class="mw-label" style="margin:0;">Due (optional)<input class="mw-field" type="date" name="due_on" min="{{ now()->toDateString() }}"></label>
+                    <button class="btn primary sm" type="submit">Give homework</button>
+                </form>
+            </details>
+        @endif
+    </div>
+
+    {{-- Resources sent --}}
+    <div class="card">
+        <div class="mw-card-head" style="padding:0 0 6px;border:0;"><h2>Resources sent</h2><span style="font-size:12px;color:var(--ink-500);">{{ $mwShares->count() }}</span></div>
+        @forelse ($mwShares as $sh)
+            <div class="mwc-item-row">
+                <div class="t"><a href="{{ route('resources.show', $sh->resource) }}" style="color:inherit;">{{ $sh->resource->title }}</a></div>
+                <div class="s">{{ $sh->resource->kindLabel() }} · sent {{ $sh->created_at->format('j M') }} · {{ $sh->opened_at ? 'opened '.$sh->opened_at->format('j M') : 'not opened yet' }}</div>
+                @if ($sh->note)<div class="s">"{{ \Illuminate\Support\Str::limit($sh->note, 120) }}"</div>@endif
+            </div>
+        @empty
+            <div class="s" style="font-size:12.5px;color:var(--ink-500);">Nothing sent yet.</div>
+        @endforelse
+        @if ($mwCanEdit)
+            <details class="mwc-add">
+                <summary class="btn ghost sm">Send a resource</summary>
+                @if ($mwLib->isEmpty())
+                    <div class="s" style="margin-top:8px;font-size:12.5px;color:var(--ink-500);">The library is empty. An admin adds resources in Admin → Resource library.</div>
+                @else
+                    <form method="POST" action="{{ route('therapist.care.resources.share', $summary['profile']) }}">
+                        @csrf
+                        <select class="mw-field" name="resource_id" required aria-label="Resource">
+                            <option value="">Choose from the library…</option>
+                            @foreach ($mwLib as $r)<option value="{{ $r->id }}">{{ $r->title }} ({{ $r->kindLabel() }})</option>@endforeach
+                        </select>
+                        <input class="mw-field" name="note" maxlength="500" placeholder="A note for the client (optional)">
+                        <button class="btn primary sm" type="submit">Send</button>
+                        <a href="{{ route('resources.index') }}" style="font-size:12.5px;">Browse the library</a>
+                    </form>
+                @endif
+            </details>
+        @endif
+    </div>
+</div>
 
 {{-- Session history --}}
 <div class="card" style="padding:0;">

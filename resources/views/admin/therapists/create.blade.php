@@ -38,7 +38,7 @@
             <div style="flex:1;">
                 <label class="mw-label" for="password">Password</label>
                 <input class="mw-field" type="password" id="password" name="password" required>
-                <div style="font-size:11px;color:var(--ink-300);margin-top:4px;">Share this with them directly — there's no email invite yet.</div>
+                <div style="font-size:11px;color:var(--ink-300);margin-top:4px;">Share this with them directly. There is no email invite yet.</div>
             </div>
             <div style="flex:1;">
                 <label class="mw-label" for="password_confirmation">Confirm password</label>

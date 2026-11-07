@@ -16,6 +16,35 @@
     </div>
 </div>
 
+{{-- Single-session prices (2026-11-01): editable here instead of only in .env. --}}
+<div class="card" style="margin-bottom:18px;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+        <div>
+            <div style="font-size:15px;font-weight:800;color:var(--ink-900);">Session prices</div>
+            <div style="font-size:12.5px;color:var(--ink-500);margin-top:2px;">What a client pays for one session without a plan. New bookings use the new price. Payments already made stay the same.</div>
+        </div>
+    </div>
+    <form method="POST" action="{{ route('admin.session-prices.update') }}" style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end;">
+        @csrf
+        @method('PUT')
+        <label style="display:flex;flex-direction:column;gap:5px;font-size:12.5px;font-weight:700;color:var(--ink-700);min-width:200px;">
+            Online (video) session, {{ $cur }}
+            <input class="mw-field" type="number" name="video_session_price" min="0" step="500" required
+                   value="{{ old('video_session_price', (float) config('mindwell.one_off_session_price')) }}">
+            @error('video_session_price')<span class="mw-error">{{ $message }}</span>@enderror
+        </label>
+        <label style="display:flex;flex-direction:column;gap:5px;font-size:12.5px;font-weight:700;color:var(--ink-700);min-width:200px;">
+            In-person session, {{ $cur }}
+            <input class="mw-field" type="number" name="in_person_session_price" min="0" step="500" required
+                   value="{{ old('in_person_session_price', (float) config('mindwell.in_person_session_price')) }}">
+            @error('in_person_session_price')<span class="mw-error">{{ $message }}</span>@enderror
+        </label>
+        <button type="submit" class="btn primary sm">Save prices</button>
+    </form>
+</div>
+
+<div style="font-size:15px;font-weight:800;color:var(--ink-900);margin:0 0 10px;">Plans</div>
+
 @if ($plans->isEmpty())
     <div class="card mw-empty">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/></svg>

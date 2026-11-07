@@ -46,7 +46,7 @@
                     <td style="padding-right:18px;">
                         @if ($facilities->isEmpty())
                             <span style="font-size:12px;color:var(--ink-500);">
-                                No active facilities yet — <a href="{{ route('admin.facilities.create') }}" style="color:var(--teal-600);font-weight:700;">add one</a>.
+                                No active facilities yet. <a href="{{ route('admin.facilities.create') }}" style="color:var(--teal-600);font-weight:700;">add one</a>.
                             </span>
                         @else
                             <form method="POST" action="{{ route('admin.referrals.assign', $session) }}" style="display:flex;gap:8px;">

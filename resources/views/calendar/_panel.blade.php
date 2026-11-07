@@ -51,7 +51,7 @@
         </div>
 
         @if ($pc)
-            <div class="mw-alert" style="margin-top:12px;background:var(--mw-coral-tint, #FCE1D3);color:var(--ink-900);">
+            <div class="mw-alert warn" style="margin-top:12px;">
                 <strong>{{ $pc->requesterLabel() }} asked:</strong> {{ $pc->summary() }}
                 @if ($pc->reason)<div style="font-size:12px;margin-top:2px;">“{{ $pc->reason }}”</div>@endif
                 <div style="font-size:11.5px;color:var(--ink-500);margin-top:2px;">Waiting for admin · asked {{ $pc->created_at->diffForHumans() }}</div>

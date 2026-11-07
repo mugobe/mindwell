@@ -4,7 +4,13 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>@yield('title', 'Dashboard') · Mindwell</title>
+    <link rel="icon" href="{{ asset('favicon.ico') }}">
+    <link rel="apple-touch-icon" href="{{ asset('apple-touch-icon.png') }}">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
+    @php $mwClient = auth()->check() && auth()->user()->role === 'client'; @endphp
+    @if ($mwClient)
+        @include('layouts._client-style')
+    @endif
     <style>
         /* Warm canvas background (2026-09-26 feedback: flat white pages read as too
            plain next to BetterHelp). Kept self-contained here rather than in app.css,
@@ -57,7 +63,7 @@
         .mw-nav { width:252px; flex:0 0 252px; background:var(--mw-nav-bg); color:var(--mw-nav-fg); position:sticky; top:0; height:100vh; display:flex; flex-direction:column; z-index:40; }
         .mw-nav-brand { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:18px 18px 16px; border-bottom:1px solid var(--mw-nav-line); }
         .mw-nav-logo { display:flex; align-items:center; gap:10px; color:var(--mw-nav-strong); font-weight:800; font-size:17px; letter-spacing:-.01em; text-decoration:none; }
-        .mw-nav-logo .mark { width:12px; height:12px; border-radius:50%; background:var(--mw-orange); box-shadow:0 0 0 5px rgba(232,130,94,.28); margin:0 3px; }
+        .mw-nav-logo .mark { width:30px; height:30px; display:block; object-fit:contain; }
         .mw-nav-tag { font-size:10px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:#fff; background:var(--mw-orange); padding:4px 8px; border-radius:999px; }
         .mw-nav-scroll { flex:1; overflow-y:auto; padding:12px 12px 18px; scrollbar-width:thin; scrollbar-color:var(--mw-nav-line) transparent; }
         .mw-nav-group + .mw-nav-group { margin-top:14px; }
@@ -185,9 +191,69 @@
             .mw-appbar .btn { white-space:nowrap; }
             .mw-content { padding:20px 16px 48px; }
         }
+
+        /* Notices, Google-style (2026-11-01, Collins: "make some of them feel the way
+           Google handles them, look at Google Meet"). One calm surface for every notice;
+           only the small icon carries the meaning (info / success / warning / error).
+           .mw-alert (used all over for flash messages and form errors) gets the same look
+           without touching its markup. New notices use .mw-note:
+             <div class="mw-note warn">
+               <div class="mw-note-body"><div class="mw-note-title">Title</div><div class="mw-note-text">Text</div></div>
+               <div class="mw-note-act"><a class="mw-pill-btn" href="#">Action</a></div>
+             </div> */
+        :root { --mw-note-bg:#EEF3F6; --mw-note-ink:#1F2933; --mw-note-text:#4A5560; --mw-note-info:#0E7C7B; }
+        .mw-note, .mw-alert { position:relative; display:flex; align-items:center; gap:14px; background:var(--mw-note-bg); color:var(--mw-note-ink); border:0; border-radius:16px; padding:13px 18px 13px 52px; margin-bottom:18px; font-size:13.5px; line-height:1.5; text-align:left; }
+        .mw-note::before, .mw-alert::before { content:""; position:absolute; left:18px; top:50%; width:22px; height:22px; margin-top:-11px; background-color:var(--mw-note-info); -webkit-mask:var(--mw-note-icon) center/contain no-repeat; mask:var(--mw-note-icon) center/contain no-repeat; }
+        .mw-alert { display:block; }
+        .mw-alert::before { top:13px; margin-top:0; }
+        .mw-note.top { align-items:flex-start; }
+        .mw-note.top::before { top:15px; margin-top:0; }
+        .mw-note-body { flex:1 1 auto; min-width:0; }
+        .mw-note-title { font-weight:700; font-size:14px; color:var(--mw-note-ink); }
+        .mw-note-text { color:var(--mw-note-text); font-size:13px; margin-top:1px; }
+        .mw-note-act { flex:0 0 auto; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+        .mw-note-act form { margin:0; }
+        .mw-pill-btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; background:transparent; color:var(--teal-700, #0E7C7B); border:1px solid #7A8590; border-radius:999px; padding:7px 16px; font-size:13px; font-weight:700; text-decoration:none; cursor:pointer; line-height:1.2; white-space:nowrap; }
+        .mw-pill-btn:hover { background:rgba(14,124,123,.07); }
+        .mw-pill-btn.filled { background:var(--teal-700, #0E7C7B); border-color:var(--teal-700, #0E7C7B); color:#fff; }
+        .mw-pill-btn.filled:hover { background:var(--teal-900, #0B4F4E); }
+        @media (max-width: 640px) { .mw-note { flex-wrap:wrap; } .mw-note::before { top:15px; margin-top:0; } .mw-note-act { width:100%; } }
+        .mw-note, .mw-alert { --mw-note-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z'/%3E%3C/svg%3E"); }
+        .mw-note.info, .mw-alert.info { --mw-note-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M11 7h2v2h-2zm0 4h2v6h-2zm1-9C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z'/%3E%3C/svg%3E"); }
+        .mw-note.info::before, .mw-alert.info::before { background-color:var(--mw-note-info); }
+        .mw-note.success, .mw-alert.success { --mw-note-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z'/%3E%3C/svg%3E"); }
+        .mw-note.success::before, .mw-alert.success::before { background-color:#1E7D4F; }
+        .mw-note.danger, .mw-alert.danger { --mw-note-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z'/%3E%3C/svg%3E"); }
+        .mw-note.danger::before, .mw-alert.danger::before { background-color:#B3261E; }
+        .mw-note.warn, .mw-alert.warn { --mw-note-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z'/%3E%3C/svg%3E"); }
+        .mw-note.warn::before, .mw-alert.warn::before { background-color:#B06000; }
+        .mw-note.star { --mw-note-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z'/%3E%3C/svg%3E"); }
+        .mw-note.star::before { background-color:#E3A12F; }
+        .mw-note.event { --mw-note-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11zM7 11h5v5H7z'/%3E%3C/svg%3E"); }
+        .mw-note.event::before { background-color:var(--mw-note-info); }
+        .mw-note.shield { --mw-note-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z'/%3E%3C/svg%3E"); }
+        .mw-note.shield::before { background-color:var(--mw-note-info); }
+        .mw-note.person { --mw-note-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z'/%3E%3C/svg%3E"); }
+        .mw-note.person::before { background-color:#B06000; }
+        .mw-note.chat { --mw-note-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H5.17L4 17.17V4h16v12z'/%3E%3C/svg%3E"); }
+        .mw-note.chat::before { background-color:var(--mw-note-info); }
     </style>
+    @php
+        // Staff look (2026-11-03): admins and therapists, including therapists still
+        // applying. See layouts._staff-style.
+        $mwStaff = auth()->check() && in_array(auth()->user()->role, ['admin', 'therapist'], true);
+        $mwNavTheme = $mwStaff ? \App\Support\StaffAppearance::sidebar() : 'navy';
+        $mwRibbon = $mwStaff && app()->environment('local', 'staging') && config('mindwell.test_ribbon');
+        $mwTabbar = $mwStaff && auth()->user()->role === 'therapist' && auth()->user()->therapistProfile?->credentials_verified;
+    @endphp
+    @if ($mwStaff)
+        @include('layouts._staff-style')
+    @endif
 </head>
-<body>
+<body class="{{ $mwClient ? 'mw-client' : '' }}{{ $mwStaff ? ' mw-staff' : '' }}{{ $mwRibbon ? ' has-ribbon' : '' }}{{ $mwTabbar ? ' has-tabbar' : '' }}" @if ($mwStaff) data-nav="{{ $mwNavTheme }}" @endif>
+@if ($mwRibbon)
+    @include('layouts._test-ribbon')
+@endif
 
 @php
     $verifiedTherapist = auth()->check()
@@ -201,14 +267,14 @@
 
     // Same warm-cream + faint botanical-line-doodle background used across every
     // content canvas (admin, therapist, client) -- see the note in <head> above.
-    $mwCanvasBg = "background-color:var(--mw-canvas, #F3F6F5); background-image:url('data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27240%27 height=%27240%27 viewBox=%270 0 240 240%27%3E%3Cg fill=%27none%27 stroke=%27%232f6f66%27 stroke-width=%271.5%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27 opacity=%270.045%27%3E%3Cg transform=%27translate(40,50) rotate(-12)%27%3E%3Cellipse cx=%270%27 cy=%27-8%27 rx=%274%27 ry=%277%27/%3E%3Cellipse cx=%270%27 cy=%278%27 rx=%274%27 ry=%277%27/%3E%3Cellipse cx=%27-8%27 cy=%270%27 rx=%277%27 ry=%274%27/%3E%3Cellipse cx=%278%27 cy=%270%27 rx=%277%27 ry=%274%27/%3E%3Ccircle cx=%270%27 cy=%270%27 r=%273%27/%3E%3C/g%3E%3Cg transform=%27translate(175,120) rotate(18)%27%3E%3Cpath d=%27M0 46 C 3 26 3 12 0 0%27/%3E%3Cpath d=%27M0 30 C 12 24 17 12 9 2%27/%3E%3Cpath d=%27M0 18 C -12 12 -16 1 -8 -6%27/%3E%3C/g%3E%3Cg transform=%27translate(55,190) rotate(8)%27%3E%3Cellipse cx=%270%27 cy=%27-7%27 rx=%273.5%27 ry=%276%27/%3E%3Cellipse cx=%270%27 cy=%277%27 rx=%273.5%27 ry=%276%27/%3E%3Cellipse cx=%27-7%27 cy=%270%27 rx=%276%27 ry=%273.5%27/%3E%3Cellipse cx=%277%27 cy=%270%27 rx=%276%27 ry=%273.5%27/%3E%3Ccircle cx=%270%27 cy=%270%27 r=%272.6%27/%3E%3C/g%3E%3C/g%3E%3C/svg%3E'); background-repeat:repeat; background-size:240px 240px;";
+    $mwCanvasBg = $mwStaff ? 'background-color:var(--mw-canvas);' : "background-color:var(--mw-canvas, #F3F6F5); background-image:url('data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27240%27 height=%27240%27 viewBox=%270 0 240 240%27%3E%3Cg fill=%27none%27 stroke=%27%232f6f66%27 stroke-width=%271.5%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27 opacity=%270.045%27%3E%3Cg transform=%27translate(40,50) rotate(-12)%27%3E%3Cellipse cx=%270%27 cy=%27-8%27 rx=%274%27 ry=%277%27/%3E%3Cellipse cx=%270%27 cy=%278%27 rx=%274%27 ry=%277%27/%3E%3Cellipse cx=%27-8%27 cy=%270%27 rx=%277%27 ry=%274%27/%3E%3Cellipse cx=%278%27 cy=%270%27 rx=%277%27 ry=%274%27/%3E%3Ccircle cx=%270%27 cy=%270%27 r=%273%27/%3E%3C/g%3E%3Cg transform=%27translate(175,120) rotate(18)%27%3E%3Cpath d=%27M0 46 C 3 26 3 12 0 0%27/%3E%3Cpath d=%27M0 30 C 12 24 17 12 9 2%27/%3E%3Cpath d=%27M0 18 C -12 12 -16 1 -8 -6%27/%3E%3C/g%3E%3Cg transform=%27translate(55,190) rotate(8)%27%3E%3Cellipse cx=%270%27 cy=%27-7%27 rx=%273.5%27 ry=%276%27/%3E%3Cellipse cx=%270%27 cy=%277%27 rx=%273.5%27 ry=%276%27/%3E%3Cellipse cx=%27-7%27 cy=%270%27 rx=%276%27 ry=%273.5%27/%3E%3Cellipse cx=%277%27 cy=%270%27 rx=%276%27 ry=%273.5%27/%3E%3Ccircle cx=%270%27 cy=%270%27 r=%272.6%27/%3E%3C/g%3E%3C/g%3E%3C/svg%3E'); background-repeat:repeat; background-size:240px 240px;";
 @endphp
 
 @php $mwShell = auth()->check() && (auth()->user()->role === 'admin' || $verifiedTherapist); @endphp
-@unless ($mwShell)
+@unless ($mwShell || $mwClient)
 <div class="mw-topbar">
-    <a href="{{ route('dashboard') }}" class="mw-brand">
-        <span class="dot"></span> Mindwell
+    <a href="{{ route('dashboard') }}" class="mw-brand" aria-label="Mindwell home">
+        <img src="{{ asset('images/mindwell-logo-horizontal.png') }}" alt="Mindwell Consultancy Ltd" style="height:34px;width:auto;display:block;">
     </a>
 
     @auth
@@ -288,8 +354,14 @@
                 </main>
             </div>
         </div>
+        @if ($mwTabbar)
+            @include('layouts._therapist-tabbar', ['mwUnread' => $mwUnread])
+        @endif
+    @elseif ($mwClient)
+        {{-- Client shell (2026-11-01 refresh): sidebar / bottom tabs, see layouts._client-shell. --}}
+        @include('layouts._client-shell', ['mwUnread' => $mwUnread])
     @else
-        {{-- Client / unverified therapist: plain content area, no sidebar. --}}
+        {{-- Unverified therapist: plain content area, no sidebar. --}}
         <div style="max-width:960px;margin:0 auto;padding:28px;min-height:100vh;{{ $mwCanvasBg }}">
             @if (session('status'))
                 <div class="mw-alert success">{{ session('status') }}</div>

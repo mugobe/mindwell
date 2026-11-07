@@ -3,16 +3,16 @@
 @section('content')
 <div class="mw-auth-shell" style="margin:-28px;">
     <div class="mw-auth-side">
-        <div class="icon">🌿</div>
+        <img src="{{ asset('images/mindwell-mark-white.png') }}" alt="" aria-hidden="true" style="width:72px;height:auto;display:block;margin-bottom:18px;">
         <div style="font-size:24px;font-weight:800;margin-bottom:8px;">Welcome back</div>
         <div style="font-size:14px;opacity:.85;line-height:1.6;max-width:320px;">
-            Licensed therapists. Text, chat, or video. Matched to you in minutes.
+            Private counselling with licensed therapists in Uganda, by video or in person.
         </div>
     </div>
 
     <div class="mw-auth-form-wrap">
         <div style="width:100%;max-width:340px;">
-            <div class="mw-brand" style="margin-bottom:28px;"><span class="dot"></span> Mindwell</div>
+            <img src="{{ asset('images/mindwell-logo-horizontal.png') }}" alt="Mindwell Consultancy Ltd" style="height:46px;width:auto;display:block;margin-bottom:28px;">
             <h1 style="font-size:20px;font-weight:800;margin-bottom:22px;color:var(--ink-900);">Log in to your account</h1>
 
             @if ($errors->any())

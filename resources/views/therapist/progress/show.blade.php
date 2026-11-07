@@ -150,7 +150,7 @@
             'yMin' => 1, 'yMax' => 5, 'grid' => $moodLabels, 'color' => '#139080', 'height' => 140,
             'label' => 'Client daily mood over the last 60 days, higher is better',
         ])
-        <p style="font-size:11.5px;color:var(--ink-300);margin:10px 0 0;">Higher is better. Mood only — journal text is never shared from here.</p>
+        <p style="font-size:11.5px;color:var(--ink-300);margin:10px 0 0;">Higher is better. Mood only. Journal text is never shared from here.</p>
     @endif
 </div>
 @endsection

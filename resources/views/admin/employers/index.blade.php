@@ -18,12 +18,12 @@
 
 {{-- Contracts ending within 30 days (2026-10-06, roadmap 27). Admins are also emailed. --}}
 @if ($mwEnding->isNotEmpty())
-    <div class="mw-alert" style="background:#FDF1EC;color:#8a4326;border:1px solid rgba(232,130,94,.35);margin-bottom:14px;">
+    <div class="mw-alert warn" style="margin-bottom:14px;">
         <strong>Contracts ending soon:</strong>
         @foreach ($mwEnding as $e)
-            <a href="{{ route('admin.employers.show', $e) }}" style="color:inherit;font-weight:700;">{{ $e->company_name }}</a> ({{ $e->contract_renewal_date->format('j M') }}){{ $loop->last ? '' : ',' }}
+            <a href="{{ route('admin.employers.show', $e) }}" style="color:inherit;font-weight:700;">{{ $e->company_name }}</a> ({{ $e->contract_renewal_date->format('j M') }}){{ $loop->last ? '.' : ',' }}
         @endforeach
-        — contact them about renewing, then update the renewal date.
+        Contact them about renewing, then update the renewal date.
     </div>
 @endif
 

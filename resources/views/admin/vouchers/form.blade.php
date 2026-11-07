@@ -57,7 +57,7 @@
             <div>
                 <label class="mw-label" for="discount_value">Amount off</label>
                 <input class="mw-field" type="number" step="1" min="1" id="discount_value" name="discount_value" value="{{ $val('discount_value') !== null ? (float) $val('discount_value') : '' }}" required placeholder="20 = 20% or {{ $mwCur }} 20">
-                <div style="font-size:11px;color:var(--ink-300);margin-top:4px;">100% makes it free — no Mobile Money step.</div>
+                <div style="font-size:11px;color:var(--ink-300);margin-top:4px;">100% makes it free, with no Mobile Money step.</div>
             </div>
             <div>
                 <label class="mw-label" for="max_discount">Cap ({{ $mwCur }}, % only)</label>

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\JournalEntry;
+use App\Services\JournalDays;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -16,23 +17,17 @@ use Illuminate\View\View;
  * Everything is private to the client unless they switch "Share with my therapist" on
  * for that entry (decided 2026-09-29: "Private, with optional sharing"). Shared
  * entries appear on the therapist's close-session page for this client.
+ *
+ * 2026-11-07: one mood per day, writing unlimited, list grouped by day (App\Services\JournalDays).
  */
 class JournalController extends Controller
 {
-    public function index(Request $request): View
+    public function index(Request $request, JournalDays $journal): View
     {
         $profile = $request->user()->clientProfile;
 
-        $entries = $profile
-            ? JournalEntry::with('therapySession.therapistProfile.user')
-                ->where('client_profile_id', $profile->id)
-                ->where(function ($q) {
-                    // A session notepad nobody has written in yet isn't worth listing.
-                    $q->where('kind', 'daily')->orWhereNotNull('body');
-                })
-                ->latest()
-                ->paginate(20)
-            : null;
+        $days = $profile ? $journal->days($profile, max(1, (int) $request->query('page', 1))) : null;
+        $today = $profile ? $journal->todayMoods($profile) : collect();
 
         $recentMoods = $profile
             ? JournalEntry::where('client_profile_id', $profile->id)
@@ -47,39 +42,51 @@ class JournalController extends Controller
             : collect();
 
         return view('journal.index', [
-            'entries' => $entries,
+            'days' => $days,
+            'todayMood' => $today->last()?->mood,
+            'todayChanges' => $today->pluck('mood')->unique()->count() > 1,
             'recentMoods' => $recentMoods,
             'moods' => JournalEntry::MOODS,
         ]);
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request, JournalDays $journal): RedirectResponse
     {
-        $validated = $request->validate([
-            'mood' => ['required', 'integer', 'between:1,5'],
-            'body' => ['nullable', 'string', 'max:5000'],
-            'shared_with_therapist' => ['nullable', 'boolean'],
-        ], [
-            'mood.required' => 'Pick how you feel today.',
-        ]);
+        $validated = $request->validate(self::rules(), self::messages());
 
         $user = $request->user();
         $profile = $user->clientProfile ?? $user->clientProfile()->create([]);
 
-        JournalEntry::create([
-            'client_profile_id' => $profile->id,
-            'kind' => 'daily',
-            'mood' => $validated['mood'],
-            'body' => $validated['body'] ?? null,
-            'shared_with_therapist' => (bool) ($validated['shared_with_therapist'] ?? false),
-        ]);
+        $result = $journal->record(
+            $profile,
+            isset($validated['mood']) ? (int) $validated['mood'] : null,
+            $validated['body'] ?? null,
+            (bool) ($validated['shared_with_therapist'] ?? false),
+        );
 
         // Phase 0 (2026-10-05): the dashboard's "How are you feeling today?" posts here too.
         if ($request->input('return') === 'dashboard') {
-            return redirect()->route('dashboard')->with('status', 'Thanks for checking in — saved to your journal.');
+            return redirect()->route('dashboard')->with('status', $result['action'] === 'mood_saved'
+                ? 'Thank you for checking in. It is saved in your journal.'
+                : $result['message']);
         }
 
-        return redirect()->route('journal.index')->with('status', 'Saved to your journal.');
+        return redirect()->route('journal.index')->with('status', $result['message']);
+    }
+
+    /** Shared with the mobile API: a face, or some words, or both. */
+    public static function rules(): array
+    {
+        return [
+            'mood' => ['nullable', 'required_without:body', 'integer', 'between:1,5'],
+            'body' => ['nullable', 'string', 'max:5000'],
+            'shared_with_therapist' => ['nullable', 'boolean'],
+        ];
+    }
+
+    public static function messages(): array
+    {
+        return ['mood.required_without' => 'Pick how you feel today, or write a few words.'];
     }
 
     public function update(Request $request, JournalEntry $entry): RedirectResponse
@@ -94,7 +101,7 @@ class JournalController extends Controller
         $entry->update($validated);
 
         return redirect()->route('journal.index')->with('status', isset($validated['shared_with_therapist']) && ! isset($validated['body'])
-            ? ($entry->shared_with_therapist ? 'Shared with your therapist.' : 'Now private — only you can see it.')
+            ? ($entry->shared_with_therapist ? 'Shared with your therapist.' : 'This is now private. Only you can see it.')
             : 'Entry updated.');
     }
 

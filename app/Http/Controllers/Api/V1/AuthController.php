@@ -115,6 +115,6 @@ class AuthController extends Controller
         // never says whether the email has an account.
         Password::sendResetLink($request->only('email'));
 
-        return response()->json(['message' => "If there's a Mindwell account for that email, we've sent it a link to reset the password. The link works for 60 minutes — check your spam folder too."]);
+        return response()->json(['message' => "If there's a Mindwell account for that email, we've sent it a link to reset the password. The link works for 60 minutes. Please check your spam folder too."]);
     }
 }

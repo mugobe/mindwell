@@ -11,6 +11,16 @@
     on Mindwell.
 </p>
 
+@if (\App\Http\Controllers\TherapistBookingController::needsAssessment(auth()->user()))
+    {{-- 2026-11-07: the first assessment comes before any booking. --}}
+    <div class="mw-note info top" style="max-width:760px;">
+        <div class="mw-note-body">
+            <div class="mw-note-title">Your first booking starts with a short assessment</div>
+            <div class="mw-note-text">About 5 minutes. Choose a therapist and a time, and we'll take you through it before you confirm. Your therapist reads it before you meet.</div>
+        </div>
+    </div>
+@endif
+
 <div style="display:grid;gap:14px;">
     @forelse ($therapists as $therapist)
     @php
@@ -63,7 +73,7 @@
     @empty
     <div class="card" style="text-align:center;padding:36px 24px;">
         @include('partials.mw-illustration', ['variant' => 'compass', 'size' => 104])
-        <p style="color:var(--ink-500);font-size:13px;margin-top:12px;">No verified therapists yet — check back soon.</p>
+        <p style="color:var(--ink-500);font-size:13px;margin-top:12px;">No verified therapists yet. Please check back soon.</p>
     </div>
     @endforelse
 </div>

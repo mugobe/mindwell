@@ -30,7 +30,7 @@
         @error('rating')<div class="mw-alert danger" style="margin:4px 0 8px;">{{ $message }}</div>@enderror
 
         <textarea class="mw-field" name="comment" maxlength="2000" rows="3" placeholder="Anything you'd like to tell us? (optional)" style="text-align:left;">{{ old('comment') }}</textarea>
-        <div style="font-size:11.5px;color:var(--ink-500);margin-top:6px;">Only the Mindwell team reads comments — your therapist doesn't see them.</div>
+        <div style="font-size:11.5px;color:var(--ink-500);margin-top:6px;">Only the Mindwell team reads comments. Your therapist does not see them.</div>
 
         <button type="submit" class="btn coral block" style="border-radius:999px;margin-top:16px;">Send feedback</button>
     </form>
@@ -38,7 +38,7 @@
     <form method="POST" action="{{ route('sessions.rate.store', $session) }}" style="margin-top:8px;">
         @csrf
         <input type="hidden" name="skip" value="1">
-        <button type="submit" class="btn ghost sm" style="border-radius:999px;">Skip — don't ask about this session again</button>
+        <button type="submit" class="btn ghost sm" style="border-radius:999px;">Skip this session</button>
     </form>
 </div>
 @endsection

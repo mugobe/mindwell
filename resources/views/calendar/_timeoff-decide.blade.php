@@ -1,11 +1,11 @@
 {{-- Approve / decline a time off request (2026-10-08). Needs $t (TimeOff) and $clashes (its
      clashing sessions, or null to skip the list). --}}
 @if ($clashes && $clashes->isNotEmpty())
-    <div class="mw-alert" style="margin-top:10px;background:var(--mw-coral-tint, #FCE1D3);color:var(--ink-900);font-size:12px;">
+    <div class="mw-alert warn" style="margin-top:10px;font-size:12.5px;">
         <strong>{{ $clashes->count() }} {{ $clashes->count() === 1 ? 'session falls' : 'sessions fall' }} inside this time off.</strong>
-        Approving doesn't move them — move or cancel them from the calendar.
+        Approving does not move them. Move or cancel them from the calendar.
         @foreach ($clashes as $c)
-            <div style="margin-top:2px;">· {{ $c->scheduled_at->format('D j M, g:i A') }} — {{ $c->clientProfile?->user?->name ?? 'Client' }}{{ $c->status === 'pending_approval' ? ' (waiting approval)' : '' }}</div>
+            <div style="margin-top:2px;">· {{ $c->scheduled_at->format('D j M, g:i A') }}: {{ $c->clientProfile?->user?->name ?? 'Client' }}{{ $c->status === 'pending_approval' ? ' (waiting approval)' : '' }}</div>
         @endforeach
     </div>
 @endif

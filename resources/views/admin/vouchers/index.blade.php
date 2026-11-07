@@ -139,7 +139,7 @@
 </div>
 
 <p style="font-size:11px;color:var(--ink-300);margin-top:12px;">
-    A voucher that takes the price to zero skips Mobile Money and still issues a receipt. Used vouchers can't be deleted — switch them off.
+    A voucher that takes the price to zero skips Mobile Money and still issues a receipt. Used vouchers cannot be deleted, but you can switch them off.
 </p>
 
 <script>

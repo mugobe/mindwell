@@ -10,7 +10,7 @@
     @if ($quote['applied'])
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:var(--mw-sage, #DEE8CE);border-radius:12px;padding:10px 14px;font-size:13px;color:var(--ink-900);">
             <div>
-                <strong>{{ $quote['code'] }}</strong> applied — {{ $quote['voucher']->discountLabel() }}
+                <strong>{{ $quote['code'] }}</strong> applied: {{ $quote['voucher']->discountLabel() }}
                 <div style="font-size:12px;color:var(--ink-700);">
                     {{ $mwCur }} {{ number_format($quote['original'], 0) }} − {{ number_format($quote['discount'], 0) }} =
                     <strong>{{ $mwCur }} {{ number_format($quote['total'], 0) }}</strong>

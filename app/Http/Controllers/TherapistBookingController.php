@@ -35,18 +35,42 @@ class TherapistBookingController extends Controller
      * There's no support for a therapist's one-off (non-recurring) slots here yet —
      * only `is_recurring` weekly patterns, since that's the only kind in real use so far.
      */
-    public function show(TherapistProfile $therapist): View
+    public function show(Request $request, TherapistProfile $therapist): View
     {
         abort_unless($therapist->credentials_verified, 404);
 
         // 2026-10-08: shared with reschedule + follow-ups; also skips times already
         // waiting for approval and the therapist's approved time off.
-        $slots = app(\App\Services\OpenSlots::class)->for($therapist, 7);
+        // 2026-11-07: shown as a calendar, so it looks further ahead (booking_days_ahead).
+        $slots = app(\App\Services\OpenSlots::class)->for($therapist, self::daysAhead());
+
+        // Coming back from the assessment (or a refused booking): keep the time they chose.
+        $picked = $request->query('at');
+        $picked = $picked && $slots->contains(fn ($s) => $s->toDateTimeString() === $picked) ? $picked : null;
 
         return view('therapists.book', [
             'therapist' => $therapist,
             'slots' => $slots,
+            'daysAhead' => self::daysAhead(),
+            'picked' => $picked,
+            'pickedMode' => $request->query('mode') === TherapySession::MODE_IN_PERSON && $therapist->offers_in_person
+                ? TherapySession::MODE_IN_PERSON : TherapySession::MODE_VIDEO,
+            'needsAssessment' => self::needsAssessment($request->user()),
         ]);
+    }
+
+    public static function daysAhead(): int
+    {
+        return max(7, (int) config('mindwell.booking_days_ahead', 28));
+    }
+
+    /**
+     * 2026-11-07 (Collins: "for any bookings to happen an assessment has to be a must ...
+     * the doctors depend on it"): a client books only after their first assessment.
+     */
+    public static function needsAssessment($user): bool
+    {
+        return $user && $user->role === 'client' && ! $user->clientProfile?->hasAssessment();
     }
 
     public function book(Request $request, TherapistProfile $therapist): RedirectResponse
@@ -66,6 +90,21 @@ class TherapistBookingController extends Controller
         $mode = $validated['session_mode'] ?? TherapySession::MODE_VIDEO;
         if ($mode === TherapySession::MODE_IN_PERSON && ! $therapist->offers_in_person) {
             return back()->with('error', "{$therapist->user->name} isn't seeing clients in person right now. Please book an online session.");
+        }
+
+        // No assessment yet: do that first, then come back to this exact time to confirm it.
+        if (self::needsAssessment($request->user())) {
+            $request->session()->put('mw_book_after_intake', [
+                'therapist' => $therapist->id,
+                'at' => $wanted->toDateTimeString(),
+                'mode' => $mode,
+            ]);
+
+            $when = $wanted->format('l j F').' at '.$wanted->format('g:i A');
+
+            return redirect()->route('intake.show')->with('status',
+                'Before your first booking, please answer a few short questions (about 5 minutes). '
+                ."Your therapist reads them before you meet. Then we'll bring you back to {$when} to confirm it.");
         }
 
         $profile = $request->user()->clientProfile ?? $request->user()->clientProfile()->create([]);
@@ -91,7 +130,7 @@ class TherapistBookingController extends Controller
         return DB::transaction(function () use ($therapist, $wanted, $profile, $mode) {
             TherapistProfile::whereKey($therapist->getKey())->lockForUpdate()->first();
 
-            if (! app(\App\Services\OpenSlots::class)->for($therapist, 7)->contains(fn ($slot) => $slot->equalTo($wanted))) {
+            if (! app(\App\Services\OpenSlots::class)->for($therapist, self::daysAhead())->contains(fn ($slot) => $slot->equalTo($wanted))) {
                 return null;
             }
 

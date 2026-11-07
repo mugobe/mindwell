@@ -123,6 +123,14 @@ Route::middleware(['auth', EnsurePasswordChanged::class, EnsureLegalAccepted::cl
     Route::get('/messages/{conversation}', [MessageController::class, 'show'])->name('messages.show');
     Route::post('/messages/{conversation}', [MessageController::class, 'send'])->middleware('throttle:30,1')->name('messages.send');
     Route::get('/messages/{conversation}/poll', [MessageController::class, 'poll'])->name('messages.poll');
+    Route::get('/messages/{conversation}/files/{message}', [MessageController::class, 'attachment'])->name('messages.attachment');
+
+    // Resource library (2026-11-07): clients read it; therapists browse it to choose what to share.
+    Route::get('/resources', [\App\Http\Controllers\ResourceController::class, 'index'])->name('resources.index');
+    Route::get('/resources/{resource}', [\App\Http\Controllers\ResourceController::class, 'show'])->name('resources.show');
+    Route::get('/resources/{resource}/file', [\App\Http\Controllers\ResourceController::class, 'file'])->name('resources.file');
+    // A client's homework answer file: the client, their therapist, or an admin.
+    Route::get('/homework/{homework}/file', [\App\Http\Controllers\CareController::class, 'homeworkFile'])->name('homework.file');
 });
 
 Route::middleware(['auth', EnsurePasswordChanged::class, EnsureLegalAccepted::class, 'role:client'])->group(function () {
@@ -191,6 +199,12 @@ Route::middleware(['auth', EnsurePasswordChanged::class, EnsureLegalAccepted::cl
 
     // "My journal", added 2026-09-29 — daily mood entries + the client's notepads from
     // video sessions. Private unless the client shares an entry. See JournalController.
+    // My therapy (2026-11-07): goals, homework and resources from the therapist.
+    Route::get('/my-therapy', [\App\Http\Controllers\CareController::class, 'myTherapy'])->name('care.index');
+    Route::post('/goals/{goal}/progress', [\App\Http\Controllers\CareController::class, 'goalProgress'])->name('care.goals.progress');
+    Route::get('/homework/{homework}', [\App\Http\Controllers\CareController::class, 'homework'])->name('care.homework');
+    Route::post('/homework/{homework}/reply', [\App\Http\Controllers\CareController::class, 'reply'])->middleware('throttle:20,1')->name('care.homework.reply');
+
     Route::get('/journal', [JournalController::class, 'index'])->name('journal.index');
     Route::post('/journal', [JournalController::class, 'store'])->name('journal.store');
     Route::patch('/journal/{entry}', [JournalController::class, 'update'])->name('journal.update');
@@ -200,15 +214,22 @@ Route::middleware(['auth', EnsurePasswordChanged::class, EnsureLegalAccepted::cl
     // docblock. This is the redirect the client's own browser lands on right after
     // paying (or cancelling) on Flutterwave's hosted checkout page; it's a GET, so it
     // needs no CSRF exception and works fine on a local, non-public URL.
-    Route::get('/payments/flutterwave/callback', [FlutterwavePaymentController::class, 'callback'])->name('payments.flutterwave.callback');
+    Route::get('/payments/callback', [FlutterwavePaymentController::class, 'callback'])->name('payments.callback');
 
     // Added 2026-09-28: the "approve it on your phone" page. v4 Mobile Money has no
     // Flutterwave page to redirect to — see FlutterwavePaymentController::waiting().
-    Route::get('/payments/flutterwave/{transaction}/waiting', [FlutterwavePaymentController::class, 'waiting'])->name('payments.flutterwave.waiting');
+    Route::get('/payments/{transaction}/waiting', [FlutterwavePaymentController::class, 'waiting'])->name('payments.waiting');
+    // 2026-11-04: the waiting page's quiet status check, and "Cancel payment".
+    Route::get('/payments/{transaction}/status', [FlutterwavePaymentController::class, 'status'])->name('payments.status');
+    Route::post('/payments/{transaction}/cancel', [FlutterwavePaymentController::class, 'cancel'])->name('payments.cancel');
 
-    // LOCAL SANDBOX TESTING ONLY — 404s unless APP_ENV=local AND the Flutterwave base
-    // URL is the sandbox. See FlutterwavePaymentController::simulate().
-    Route::post('/payments/flutterwave/{transaction}/simulate', [FlutterwavePaymentController::class, 'simulate'])->name('payments.flutterwave.simulate');
+    // 2026-11-07: these pages used to live under /payments/flutterwave/... (the first
+    // payment service). Old links and payments already in progress still land right.
+    Route::get('/payments/flutterwave/callback', fn (\Illuminate\Http\Request $r) => redirect()->to('/payments/callback'.($r->getQueryString() ? '?'.$r->getQueryString() : ''), 301));
+    Route::get('/payments/flutterwave/{transaction}/{page}', fn (string $transaction, string $page) => redirect()->to("/payments/{$transaction}/{$page}", 301))
+        ->whereIn('page', ['waiting', 'status']);
+
+    Route::post('/payments/{transaction}/simulate', [FlutterwavePaymentController::class, 'simulate'])->name('payments.simulate');
 });
 
 /*
@@ -229,7 +250,20 @@ Route::middleware(['auth', EnsurePasswordChanged::class, EnsureLegalAccepted::cl
  */
 Route::post('/webhooks/flutterwave', [FlutterwavePaymentController::class, 'webhook'])->name('webhooks.flutterwave');
 
+// MarzPay's callback (2026-11-02): outside the login group, CSRF-exempt in
+// bootstrap/app.php. See FlutterwavePaymentController::marzpayWebhook().
+Route::post('/webhooks/marzpay', [FlutterwavePaymentController::class, 'marzpayWebhook'])->name('webhooks.marzpay');
+
+// Files for the mobile app (2026-11-07): 30-minute signed links, made by the API.
+Route::middleware('signed')->prefix('f')->name('files.')->group(function () {
+    Route::get('/chat/{message}', [\App\Http\Controllers\SignedFileController::class, 'chat'])->name('chat');
+    Route::get('/resource/{resource}', [\App\Http\Controllers\SignedFileController::class, 'resource'])->name('resource');
+    Route::get('/homework/{homework}', [\App\Http\Controllers\SignedFileController::class, 'homework'])->name('homework');
+});
+
 Route::middleware(['auth', EnsurePasswordChanged::class, EnsureLegalAccepted::class, 'admin'])->prefix('admin')->name('admin.')->group(function () {
+    // Resource library (2026-11-07): only admins add to it.
+    Route::resource('resources', \App\Http\Controllers\Admin\ResourceController::class)->except('show');
     Route::get('/users', [UserController::class, 'index'])->name('users.index');
     Route::get('/search', \App\Http\Controllers\Admin\SearchController::class)->name('search');
     Route::post('/users/{user}/suspend', [UserController::class, 'suspend'])->name('users.suspend');
@@ -259,6 +293,7 @@ Route::middleware(['auth', EnsurePasswordChanged::class, EnsureLegalAccepted::cl
     Route::post('/plans', [SubscriptionPlanController::class, 'store'])->name('plans.store');
     Route::get('/plans/{plan}/edit', [SubscriptionPlanController::class, 'edit'])->name('plans.edit');
     Route::put('/plans/{plan}', [SubscriptionPlanController::class, 'update'])->name('plans.update');
+    Route::put('/session-prices', [SubscriptionPlanController::class, 'updateSessionPrices'])->name('session-prices.update');
 
     Route::get('/employers', [EmployerAccountController::class, 'index'])->name('employers.index');
     Route::get('/employers/create', [EmployerAccountController::class, 'create'])->name('employers.create');
@@ -304,6 +339,17 @@ Route::middleware(['auth', EnsurePasswordChanged::class, EnsureLegalAccepted::cl
     Route::get('/intake-settings', [\App\Http\Controllers\Admin\IntakeSettingsController::class, 'edit'])->name('intake-settings.edit');
     Route::put('/intake-settings', [\App\Http\Controllers\Admin\IntakeSettingsController::class, 'update'])->name('intake-settings.update');
 
+    // Therapist applications (onboarding, 2026-11-03). See Admin\TherapistApplicationController.
+    Route::get('/applications', [\App\Http\Controllers\Admin\TherapistApplicationController::class, 'index'])->name('applications.index');
+    Route::get('/applications/{application}', [\App\Http\Controllers\Admin\TherapistApplicationController::class, 'show'])->name('applications.show');
+    Route::post('/applications/{application}/checklist', [\App\Http\Controllers\Admin\TherapistApplicationController::class, 'checklist'])->name('applications.checklist');
+    Route::post('/applications/{application}/decide', [\App\Http\Controllers\Admin\TherapistApplicationController::class, 'decide'])->name('applications.decide');
+    Route::get('/applications/{application}/documents/{document}', [\App\Http\Controllers\Admin\TherapistApplicationController::class, 'document'])->name('applications.document');
+
+    // Staff sidebar colour, one choice for the clinic (2026-11-03).
+    Route::get('/appearance', [\App\Http\Controllers\Admin\AppearanceController::class, 'edit'])->name('appearance.edit');
+    Route::put('/appearance', [\App\Http\Controllers\Admin\AppearanceController::class, 'update'])->name('appearance.update');
+
     // In-person venues + vouchers (2026-10-07).
     Route::get('/venues', [VenueController::class, 'index'])->name('venues.index');
     Route::get('/venues/create', [VenueController::class, 'create'])->name('venues.create');
@@ -342,6 +388,17 @@ Route::middleware(['auth', EnsurePasswordChanged::class, EnsureLegalAccepted::cl
     Route::get('/ratings', [AdminRatingController::class, 'index'])->name('ratings.index');
 });
 
+// Therapist onboarding (2026-11-03): the application, step by step, for therapists who
+// aren't approved yet. See TherapistApplicationController.
+Route::middleware(['auth', EnsurePasswordChanged::class, EnsureLegalAccepted::class, 'role:therapist'])->prefix('apply')->name('apply.')->group(function () {
+    Route::get('/', [\App\Http\Controllers\TherapistApplicationController::class, 'start'])->name('start');
+    Route::get('/status', [\App\Http\Controllers\TherapistApplicationController::class, 'status'])->name('status');
+    Route::post('/submit', [\App\Http\Controllers\TherapistApplicationController::class, 'submit'])->name('submit');
+    Route::delete('/documents/{kind}', [\App\Http\Controllers\TherapistApplicationController::class, 'removeDocument'])->whereIn('kind', ['licence', 'national_id', 'cv', 'insurance'])->name('document.remove');
+    Route::get('/{step}', [\App\Http\Controllers\TherapistApplicationController::class, 'show'])->whereIn('step', ['licence', 'training', 'fitness', 'profile', 'consents', 'review'])->name('step');
+    Route::post('/{step}', [\App\Http\Controllers\TherapistApplicationController::class, 'save'])->whereIn('step', ['licence', 'training', 'fitness', 'profile', 'consents'])->middleware('throttle:60,1')->name('save');
+});
+
 Route::middleware(['auth', EnsurePasswordChanged::class, EnsureLegalAccepted::class, 'role:therapist'])->prefix('therapist')->name('therapist.')->group(function () {
     Route::get('/availability', [AvailabilityController::class, 'index'])->name('availability.index');
     Route::post('/availability', [AvailabilityController::class, 'store'])->name('availability.store');
@@ -369,4 +426,13 @@ Route::middleware(['auth', EnsurePasswordChanged::class, EnsureLegalAccepted::cl
     Route::get('/profile', [TherapistProfileController::class, 'edit'])->name('profile.edit');
     Route::put('/profile', [TherapistProfileController::class, 'update'])->name('profile.update');
     Route::get('/clients/{clientProfile}/progress', [ClientProgressController::class, 'show'])->name('clients.progress');
+
+    // Care features from the client's file (2026-11-07): goals, homework, sharing resources.
+    Route::post('/clients/{clientProfile}/goals', [\App\Http\Controllers\Therapist\CareController::class, 'storeGoal'])->name('care.goals.store');
+    Route::patch('/goals/{goal}', [\App\Http\Controllers\Therapist\CareController::class, 'updateGoal'])->name('care.goals.update');
+    Route::delete('/goals/{goal}', [\App\Http\Controllers\Therapist\CareController::class, 'destroyGoal'])->name('care.goals.destroy');
+    Route::post('/clients/{clientProfile}/homework', [\App\Http\Controllers\Therapist\CareController::class, 'storeHomework'])->name('care.homework.store');
+    Route::post('/homework/{homework}/reviewed', [\App\Http\Controllers\Therapist\CareController::class, 'reviewHomework'])->name('care.homework.review');
+    Route::delete('/homework/{homework}', [\App\Http\Controllers\Therapist\CareController::class, 'destroyHomework'])->name('care.homework.destroy');
+    Route::post('/clients/{clientProfile}/resources', [\App\Http\Controllers\Therapist\CareController::class, 'shareResource'])->name('care.resources.share');
 });

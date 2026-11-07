@@ -83,7 +83,7 @@ class UserController extends Controller
         $status = Password::sendResetLink(['email' => $user->email]);
 
         if ($status === Password::RESET_THROTTLED) {
-            return back()->with('error', 'A reset link was sent to '.$user->name.' less than a minute ago — please wait a moment before sending another.');
+            return back()->with('error', 'A reset link was sent to '.$user->name.' less than a minute ago. Please wait a moment before sending another.');
         }
 
         if ($status !== Password::RESET_LINK_SENT) {

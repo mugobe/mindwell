@@ -10,7 +10,7 @@
 <div class="mw-page-head">
     <div>
         <h1>Users</h1>
-        <div class="sub">Everyone with a Mindwell account — clients, therapists and the admin team.</div>
+        <div class="sub">Everyone with a Mindwell account: clients, therapists and the admin team.</div>
     </div>
     <div class="actions">
         <a href="{{ route('admin.therapists.index') }}" class="btn ghost sm">Therapist approvals</a>
@@ -24,7 +24,7 @@
     <div class="card" style="margin-bottom:18px;border:2px solid var(--mw-gold, #F6E1A8);">
         <div style="font-size:14px;font-weight:800;color:var(--ink-900);">Temporary password for {{ $mwTemp['name'] }}</div>
         <div style="font-size:12.5px;color:var(--ink-500);margin:4px 0 12px;">
-            Give this to them in person or by phone — not by email or SMS. It's shown only this once. They'll choose their own
+            Give this to them in person or by phone, not by email or SMS. It is shown only once. They will choose their own
             password when they log in with it ({{ $mwTemp['email'] }}).
         </div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">

@@ -27,7 +27,7 @@
 @if ($crisisCount > 0)
     <div class="mw-alert danger" style="margin-bottom:14px;">
         {{ $crisisCount }} {{ $crisisCount === 1 ? 'intake was' : 'intakes were' }} crisis-level. Each one opened a case in
-        <a href="{{ route('admin.crisis.index') }}" style="color:inherit;font-weight:800;">Crisis flags</a> — follow up there.
+        <a href="{{ route('admin.crisis.index') }}" style="color:inherit;font-weight:800;">Crisis flags</a>. Please follow up there.
     </div>
 @endif
 

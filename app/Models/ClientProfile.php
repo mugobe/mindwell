@@ -35,6 +35,12 @@ class ClientProfile extends Model
         return $this->belongsTo(Subscription::class, 'current_subscription_id');
     }
 
+    /** Has done the first assessment (2026-11-07: needed before any booking). */
+    public function hasAssessment(): bool
+    {
+        return $this->intakeAssessments()->exists();
+    }
+
     public function intakeAssessments(): HasMany
     {
         return $this->hasMany(IntakeAssessment::class, 'client_id');

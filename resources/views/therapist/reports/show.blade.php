@@ -92,7 +92,7 @@
 </div>
 
 <p style="font-size:11px;color:var(--ink-300);margin-top:14px;max-width:720px;">
-    This is exactly what you submitted when you closed the session out — it isn't shown to the client anywhere
+    This is exactly what you submitted when you closed the session. It is not shown to the client anywhere
     in the portal.
 </p>
 @endsection

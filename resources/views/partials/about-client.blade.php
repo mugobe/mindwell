@@ -11,7 +11,7 @@
 @elseif (! $mwA || ! $mwA->hasAnswers())
     <p style="font-size:12.5px;color:var(--ink-500);margin:0;">
         @if (! $mwA)
-            Not filled in yet — this client did their intake before these questions existed. They're asked once on their dashboard.
+            Not filled in yet. This client did their intake before these questions existed. They're asked once on their dashboard.
         @elseif ($mwA->dismissed_at)
             The client chose "Not now" on {{ $mwA->dismissed_at->format('j M Y') }}. They can add it any time from My details.
         @else

@@ -91,7 +91,7 @@
 </div>
 
 <p style="font-size:11px;color:var(--ink-300);margin-top:14px;max-width:640px;">
-    This is exactly what the therapist submitted when they closed the session out — it isn't shown to the
+    This is exactly what the therapist submitted when they closed the session. It is not shown to the
     client anywhere in the portal.
 </p>
 @endsection

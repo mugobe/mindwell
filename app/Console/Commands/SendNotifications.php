@@ -8,6 +8,7 @@ use App\Services\Notifier;
 use App\Services\RatingReminders;
 use App\Services\CheckInReminders;
 use App\Services\EmployerContractWarnings;
+use App\Services\JournalReminders;
 use App\Services\SubscriptionRenewals;
 use Illuminate\Console\Command;
 
@@ -31,7 +32,7 @@ class SendNotifications extends Command
 
     protected $description = 'Send appointment reminders and new-message emails that are due';
 
-    public function handle(Notifier $notifier, SubscriptionRenewals $renewals, CheckInReminders $checkIns, RatingReminders $ratings, EmployerContractWarnings $employers): int
+    public function handle(Notifier $notifier, SubscriptionRenewals $renewals, CheckInReminders $checkIns, RatingReminders $ratings, EmployerContractWarnings $employers, JournalReminders $journal): int
     {
         $now = now();
         $sent24 = $sent1 = $sentMsg = 0;
@@ -121,6 +122,7 @@ class SendNotifications extends Command
 
         // ---- Employer contracts ending within 30 days (added 2026-10-06).
         $this->info('Employer contract warnings: '.$employers->run());
+        $this->info('Journal reminders: '.$journal->run());
 
         return self::SUCCESS;
     }

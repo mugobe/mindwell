@@ -137,7 +137,7 @@ class SessionRequestController extends Controller
         // The normal Mobile Money case (confirmed against the real sandbox 2026-09-28):
         // no Flutterwave page at all — the client approves on their phone while this
         // app waits. See FlutterwavePaymentController::waiting().
-        return redirect()->route('payments.flutterwave.waiting', $transaction);
+        return redirect()->route('payments.waiting', $transaction);
     }
 
     public function lobby(Request $request, TherapySession $therapySession): View|RedirectResponse
@@ -172,6 +172,10 @@ class SessionRequestController extends Controller
         return view('sessions.lobby', [
             'session' => $therapySession,
             'targetMinutes' => config('mindwell.lobby_target_minutes'),
+            // So the "Waiting 3:12" count carries on correctly after a reload (2026-11-06).
+            'waitedSeconds' => $therapySession->entered_lobby_at
+                ? max(0, (int) $therapySession->entered_lobby_at->diffInSeconds(now()))
+                : 0,
         ]);
     }
 
@@ -188,9 +192,19 @@ class SessionRequestController extends Controller
             $therapySession->refresh();
         }
 
+        // 2026-11-06: also moves the client on if the session left 'routing' some other
+        // way (cancelled by staff, for example), and gives the therapist's name so
+        // the page can say "Grace is ready for you" before it moves on.
+        $therapist = $therapySession->status === 'scheduled'
+            ? $therapySession->loadMissing('therapistProfile.user')->therapistProfile?->user?->name
+            : null;
+
         return response()->json([
             'status' => $therapySession->status,
-            'redirect' => $therapySession->status === 'scheduled' ? route('sessions.connected', $therapySession) : null,
+            'redirect' => $therapySession->status === 'routing'
+                ? null
+                : route($this->routeForStatus($therapySession), $therapySession),
+            'therapist' => $therapist,
         ]);
     }
 
@@ -212,7 +226,7 @@ class SessionRequestController extends Controller
         // cancelled out from under them by a stray click.
 
         return redirect()->route('therapists.browse')
-            ->with('status', 'No problem — pick a therapist and time that works for you below.');
+            ->with('status', 'No problem. Choose a therapist and a time that suits you below.');
     }
 
     /**

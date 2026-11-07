@@ -78,7 +78,7 @@
                 </td>
             </tr>
             @empty
-            <tr><td colspan="4" style="padding:16px;color:var(--ink-500);">Nobody's waiting — the automatic match is keeping up.</td></tr>
+            <tr><td colspan="4" style="padding:16px;color:var(--ink-500);">Nobody is waiting. Automatic matching is keeping up.</td></tr>
             @endforelse
         </tbody>
     </table>
@@ -156,7 +156,7 @@
     <div class="mw-alert danger" style="margin-top:10px;">{{ $errors->first() }}</div>
 @endif
 <p style="font-size:11px;color:var(--ink-300);margin-top:12px;">
-    A client only sees this as confirmed once you approve it here — whether they booked a therapist directly
+    A client only sees this as confirmed once you approve it here, whether they booked a therapist directly
     themselves or their therapist scheduled a follow-up while closing a previous session. Declining cancels it
     and refunds a session credit if one was used.
 </p>
@@ -230,7 +230,7 @@
     </table>
 </div>
 <p style="font-size:11px;color:var(--ink-300);margin-top:12px;">
-    Visibility only — these came from a therapist picking a follow-up time directly while closing out a
+    For information only. These came from a therapist picking a follow-up time directly while closing out a
     session, and you've already approved them above. Nothing to do here.
 </p>
 @endsection

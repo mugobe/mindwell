@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\AppSetting;
 use App\Models\AuditLog;
 use App\Models\SubscriptionPlan;
 use Illuminate\Http\RedirectResponse;
@@ -54,6 +55,38 @@ class SubscriptionPlanController extends Controller
         AuditLog::record($request, 'subscription_plan.updated', "Updated plan \"{$plan->name}\"", ['plan_id' => $plan->id]);
 
         return redirect()->route('admin.plans.index')->with('status', $plan->name.' was updated.');
+    }
+
+    /**
+     * Single-session prices (2026-11-01, Collins: "make it configurable"). Stored in
+     * app_settings and applied over config in AppServiceProvider::boot(). New checkouts
+     * use the new price straight away; payments already made are not touched.
+     */
+    public function updateSessionPrices(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'video_session_price' => ['required', 'numeric', 'min:0', 'max:100000000'],
+            'in_person_session_price' => ['required', 'numeric', 'min:0', 'max:100000000'],
+        ], [], [
+            'video_session_price' => 'online session price',
+            'in_person_session_price' => 'in-person session price',
+        ]);
+
+        $oldVideo = (float) config('mindwell.one_off_session_price');
+        $oldInPerson = (float) config('mindwell.in_person_session_price');
+        $newVideo = round((float) $validated['video_session_price'], 2);
+        $newInPerson = round((float) $validated['in_person_session_price'], 2);
+
+        AppSetting::put('prices.video_session', $newVideo);
+        AppSetting::put('prices.in_person_session', $newInPerson);
+
+        $cur = config('flutterwave.currency', 'UGX');
+        AuditLog::record($request, 'session_prices.updated',
+            "Session prices changed. Online: {$cur} ".number_format($oldVideo)." to ".number_format($newVideo)
+            .". In person: {$cur} ".number_format($oldInPerson)." to ".number_format($newInPerson).'.',
+            ['video' => [$oldVideo, $newVideo], 'in_person' => [$oldInPerson, $newInPerson]]);
+
+        return redirect()->route('admin.plans.index')->with('status', 'Session prices saved. New bookings will use them.');
     }
 
     private function validated(Request $request): array

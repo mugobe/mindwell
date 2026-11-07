@@ -13,6 +13,13 @@
     </div>
 </div>
 
+@if (($applications ?? 0) > 0)
+    <div class="mw-alert" style="background:#EEE8FA;border:1px solid #D9CCF5;color:#3F2A80;display:flex;justify-content:space-between;align-items:center;gap:12px;">
+        <span><b>{{ $applications }} new {{ $applications === 1 ? 'application' : 'applications' }}</b> waiting for review. New therapists now apply step by step and are approved from Applications.</span>
+        <a href="{{ route('admin.applications.index') }}" class="btn primary sm">Open applications</a>
+    </div>
+@endif
+
 <nav class="mw-tabs" aria-label="Sections">
     <a href="#pending" class="on">To approve <span class="n">{{ $pending->count() }}</span></a>
     @if ($licenseChanges->isNotEmpty())<a href="#licence">Licence changes <span class="n">{{ $licenseChanges->count() }}</span></a>@endif

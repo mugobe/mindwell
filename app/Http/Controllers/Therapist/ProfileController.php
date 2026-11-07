@@ -97,7 +97,7 @@ class ProfileController extends Controller
         }
 
         return redirect()->route('therapist.profile.edit')->with('status', $licenseChanged
-            ? 'Profile saved. Your licence change has been sent to the Mindwell team for approval — your current licence stays active until then.'
+            ? 'Profile saved. Your licence change has been sent to the Mindwell team for approval. Your current licence stays active until then.'
             : 'Profile saved.');
     }
 

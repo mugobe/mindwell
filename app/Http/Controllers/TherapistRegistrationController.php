@@ -2,14 +2,23 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AuditLog;
+use App\Models\TherapistApplication;
 use App\Models\TherapistProfile;
 use App\Models\User;
+use App\Support\UgandaPhone;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
+/**
+ * Therapist sign-up, step 0 of onboarding (rebuilt 2026-11-03). This page only creates the
+ * account; the licence, training, fitness to practise, profile and consents are asked in
+ * TherapistApplicationController, one step at a time, and reviewed by an admin in
+ * Admin\TherapistApplicationController before the therapist can see clients.
+ */
 class TherapistRegistrationController extends Controller
 {
     public function showRegister(): View
@@ -23,43 +32,37 @@ class TherapistRegistrationController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
-            // Optional mobile number for SMS reminders (added 2026-09-30).
-            'phone' => ['nullable', 'string', 'max:20', \App\Support\UgandaPhone::rule()],
-            'license_number' => ['required', 'string', 'max:255'],
-            'license_state' => ['required', 'string', 'max:255'],
-            'specialties' => ['nullable', 'string', 'max:500'],
-            'hourly_rate' => ['nullable', 'numeric', 'min:0'],
-            // Phase 0 (2026-10-05): consent is recorded for therapists too.
+            'phone' => ['required', 'string', 'max:20', UgandaPhone::rule()],
             'accept_terms' => ['accepted'],
             'accept_privacy' => ['accepted'],
         ], [
             'accept_terms.accepted' => 'Please agree to the Terms of Use.',
             'accept_privacy.accepted' => 'Please agree to the Privacy Policy.',
+            'phone.required' => 'Please add a mobile number. The team uses it to reach you about your application.',
         ]);
 
-        // Turn "Anxiety, CBT, Relationships" into a clean array, or null if left blank.
-        $specialties = collect(explode(',', $validated['specialties'] ?? ''))
-            ->map(fn ($s) => trim($s))
-            ->filter()
-            ->values()
-            ->all();
-
-        $user = DB::transaction(function () use ($validated, $specialties) {
+        $user = DB::transaction(function () use ($validated) {
             $user = User::create([
                 'name' => $validated['name'],
                 'email' => $validated['email'],
                 'password' => $validated['password'],
-                'phone' => \App\Support\UgandaPhone::normalize($validated['phone'] ?? null),
+                'phone' => UgandaPhone::normalize($validated['phone']),
                 'role' => 'therapist',
             ] + User::consentAttributes(includeEmergency: false));
 
-            TherapistProfile::create([
+            // The licence columns are filled from the application when an admin approves it.
+            $profile = TherapistProfile::create([
                 'user_id' => $user->id,
-                'license_number' => $validated['license_number'],
-                'license_state' => $validated['license_state'],
-                'specialties' => $specialties ?: null,
+                'license_number' => '',
+                'license_state' => '',
                 'credentials_verified' => false,
-                'hourly_rate' => $validated['hourly_rate'] ?? null,
+            ]);
+
+            TherapistApplication::create([
+                'user_id' => $user->id,
+                'therapist_profile_id' => $profile->id,
+                'status' => TherapistApplication::DRAFT,
+                'answers' => [],
             ]);
 
             return $user;
@@ -68,6 +71,9 @@ class TherapistRegistrationController extends Controller
         Auth::login($user);
         $request->session()->regenerate();
 
-        return redirect()->route('dashboard');
+        AuditLog::record($request, 'therapist.signed_up', $user->name.' created a therapist account and started an application.', ['user_id' => $user->id]);
+
+        return redirect()->route('apply.step', 'licence')
+            ->with('status', 'Your account is ready. Next, tell us about your licence. You can save and come back at any time.');
     }
 }

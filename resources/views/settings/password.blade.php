@@ -3,21 +3,24 @@
 @section('content')
 {{-- Added 2026-10-04 — see PasswordChangeController. $forced = they logged in with a
      temporary password from an admin and must choose their own first. --}}
-<div style="max-width:460px;margin:0 auto;">
+<div style="max-width:{{ auth()->user()->role === 'client' ? '720px' : '460px;margin:0 auto' }};">
     <div class="dash-head" style="align-items:center;">
         <div style="display:flex;align-items:center;gap:12px;">
             @include('partials.mw-icon-badge', ['size' => 40, 'margin' => '0', 'tint' => 'var(--mw-teal-tint, #DCEDE8)', 'icon' => '<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/>'])
-            <h1>{{ $forced ? 'Choose your own password' : 'Change password' }}</h1>
+            <h1>{{ $forced ? 'Choose your own password' : 'Password' }}</h1>
         </div>
     </div>
+    @unless ($forced)
+        @include('settings._tabs')
+    @endunless
 
     @if ($forced)
-        <div class="mw-alert" style="background:var(--mw-gold, #F6E1A8);color:#6b4a12;margin-bottom:14px;">
+        <div class="mw-alert warn" style="margin-bottom:14px;">
             You logged in with a temporary password from Mindwell. Please choose your own before continuing.
         </div>
     @endif
 
-    <form method="POST" action="{{ route('password.change.update') }}" class="card" style="padding:22px;display:flex;flex-direction:column;gap:14px;">
+    <form method="POST" action="{{ route('password.change.update') }}" class="card" style="padding:22px;display:flex;flex-direction:column;gap:14px;max-width:520px;">
         @csrf
         @method('PUT')
 

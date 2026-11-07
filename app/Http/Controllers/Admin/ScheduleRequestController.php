@@ -68,6 +68,6 @@ class ScheduleRequestController extends Controller
         $data = $request->validate(['note' => ['nullable', 'string', 'max:500'], 'approve' => ['required', 'boolean']]);
         $changes->decideTimeOff($request, $timeOff, $request->user(), (bool) $data['approve'], $data['note'] ?? null);
 
-        return back()->with('status', $data['approve'] ? 'Time off approved — clients can no longer book those times.' : 'Time off declined.');
+        return back()->with('status', $data['approve'] ? 'Time off approved. Clients can no longer book those times.' : 'Time off declined.');
     }
 }

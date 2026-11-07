@@ -15,7 +15,7 @@
     @include('partials.crisis-contacts')
 
     <p style="font-size:12px;color:var(--ink-500);line-height:1.6;margin-top:22px;">
-        Mindwell is for ongoing counselling and therapy — it isn't an emergency service and can't send help to you.
+        Mindwell is for ongoing counselling and therapy. It is not an emergency service and cannot send help to you.
         @guest
             When you're safe, you can <a href="{{ route('register') }}" style="color:var(--teal-700, #2f6f66);font-weight:700;">create an account</a> to talk to a therapist.
         @else

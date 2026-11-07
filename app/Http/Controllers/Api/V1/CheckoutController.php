@@ -96,7 +96,7 @@ class CheckoutController extends Controller
         if ($result['free']) {
             $done = app(FlutterwavePaymentController::class)->finalizeFree($transaction, $request);
 
-            return response()->json($this->state($transaction->fresh(), 'succeeded', $done['status_message'] ?? 'Your voucher covered the full price — nothing to pay.'), 201);
+            return response()->json($this->state($transaction->fresh(), 'succeeded', $done['status_message'] ?? 'Your voucher covers the full price. There is nothing to pay.'), 201);
         }
 
         $charge = $checkout->startMobileMoney($transaction, $momo, $request->user());
@@ -127,7 +127,7 @@ class CheckoutController extends Controller
     public function alreadySent(PaymentTransaction $t): JsonResponse
     {
         return response()->json($this->state($t, 'pending',
-            ($t->meta['instruction'] ?? null) ?: "We've already sent a payment request to your phone — approve it there."), 200);
+            ($t->meta['instruction'] ?? null) ?: "We have already sent a payment request to your phone. Please approve it there."), 200);
     }
 
     /** Poll this while the client approves on their phone. */
@@ -136,6 +136,16 @@ class CheckoutController extends Controller
         $this->ownTx($request, $transaction);
 
         $check = app(FlutterwavePaymentController::class)->checkForApi($transaction, $request);
+
+        return response()->json($this->state($transaction->fresh(), $check['state'], $check['message']));
+    }
+
+    /** Stop waiting for a Mobile Money payment (2026-11-04). A late approval is still recorded. */
+    public function cancel(Request $request, PaymentTransaction $transaction): JsonResponse
+    {
+        $this->ownTx($request, $transaction);
+
+        $check = app(FlutterwavePaymentController::class)->cancelForApi($transaction, $request);
 
         return response()->json($this->state($transaction->fresh(), $check['state'], $check['message']));
     }

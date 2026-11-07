@@ -216,7 +216,7 @@ class VideoRoomController extends Controller
 
         if ($therapySession->status !== 'scheduled') {
             return response()->json(['message' => $role === 'client'
-                ? 'This session has ended — you can keep editing these notes in your journal.'
+                ? 'This session has ended. You can keep editing these notes in your journal.'
                 : 'This session has been closed, so its live notes are locked.'], 409);
         }
 

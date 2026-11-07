@@ -39,25 +39,26 @@
 
     @include('partials.voucher-box', ['quote' => $quote])
 
+    @include('partials.payment-failed')
     <form method="POST" action="{{ route('subscription.subscribe', $plan) }}" style="text-align:left;">
         @csrf
         @if ($quote['applied'])
             <input type="hidden" name="voucher" value="{{ $quote['code'] }}">
         @endif
         @if ($quote['applied'] && $quote['total'] <= 0)
-            <button type="submit" class="btn coral block" style="border-radius:999px;">Confirm — covered by your voucher</button>
+            <button type="submit" class="btn coral block" style="border-radius:999px;">Confirm (covered by your voucher)</button>
         @else
         <div style="margin-bottom:14px;">
             <label class="mw-label" for="network">Mobile Money network</label>
             <select class="mw-field" id="network" name="network" required>
-                <option value="MTN" {{ old('network') === 'MTN' ? 'selected' : '' }}>MTN Mobile Money</option>
-                <option value="AIRTEL" {{ old('network') === 'AIRTEL' ? 'selected' : '' }}>Airtel Money</option>
+                <option value="MTN" {{ old('network', session('mw_last_momo.network')) === 'MTN' ? 'selected' : '' }}>MTN Mobile Money</option>
+                <option value="AIRTEL" {{ old('network', session('mw_last_momo.network')) === 'AIRTEL' ? 'selected' : '' }}>Airtel Money</option>
             </select>
             @error('network')<div class="mw-alert danger" style="margin-top:6px;">{{ $message }}</div>@enderror
         </div>
         <div style="margin-bottom:18px;">
             <label class="mw-label" for="phone_number">Mobile Money phone number</label>
-            <input class="mw-field" type="tel" id="phone_number" name="phone_number" value="{{ old('phone_number') }}" placeholder="0772123456" required>
+            <input class="mw-field" type="tel" id="phone_number" name="phone_number" value="{{ old('phone_number', session('mw_last_momo.phone_number')) }}" placeholder="0772123456" required>
             @error('phone_number')<div class="mw-alert danger" style="margin-top:6px;">{{ $message }}</div>@enderror
         </div>
         <button type="submit" class="btn coral block" style="border-radius:999px;">{{ $activeSubscription ? 'Switch with Mobile Money' : 'Subscribe with Mobile Money' }}</button>
@@ -66,9 +67,7 @@
     <a href="{{ route('subscription.index') }}" style="display:inline-block;margin-top:10px;font-size:12px;color:var(--ink-500);">Cancel</a>
 
     <p style="font-size:10.5px;color:var(--ink-300);margin-top:16px;">
-        You'll get a PIN prompt on your phone from Flutterwave to approve this payment. This is currently
-        running against Flutterwave's sandbox (Mobile Money only for now, no real money moves yet) — use OTP
-        <strong>123456</strong> if a test prompt asks for one. Card payments are coming in a later update.
+        @include('partials.momo-note')
     </p>
 </div>
 @endsection

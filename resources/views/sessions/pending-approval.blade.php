@@ -8,12 +8,9 @@
         Just confirming the details
     </h1>
     <p style="font-size:13.5px;color:var(--ink-500);margin-bottom:22px;">
-        You're booked in with <strong>{{ $session->therapistProfile?->user?->name ?? 'your specialist' }}</strong>
-        for a {{ $session->duration_minutes }}-minute {{ $session->isInPerson() ? 'in-person ' : '' }}session
-        @if ($session->scheduled_at)
-            on {{ $session->scheduled_at->format('l, M j \a\t g:i A') }}
-        @endif
-        . Our team is doing a quick check before it's fully confirmed{{ $session->isInPerson() ? ', and will let you know where you\'ll meet' : '' }}.
+        You are booked in with <strong>{{ $session->therapistProfile?->user?->name ?? 'your specialist' }}</strong>
+        for a {{ $session->duration_minutes }}-minute {{ $session->isInPerson() ? 'in-person ' : '' }}session{{ $session->scheduled_at ? ' on '.$session->scheduled_at->format('l, M j \a\t g:i A') : '' }}.
+        Our team will check it before it is confirmed{{ $session->isInPerson() ? ', and will tell you where you will meet' : '' }}.
     </p>
 
     <span class="pill warn" style="margin-bottom:22px;">Pending approval</span>

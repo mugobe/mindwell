@@ -17,12 +17,12 @@
         @endif
         <div style="font-size:28px;font-weight:800;color:var(--ink-900);">{{ config('flutterwave.currency') }} {{ number_format($quote['total'], 0) }}</div>
         <div style="font-size:11.5px;color:var(--ink-300);margin-top:4px;">
-            for {{ $newPeriodStart->format('D j M') }} – {{ $plan->periodEndFrom($newPeriodStart)->copy()->subDay()->format('D j M') }}
+            for {{ $newPeriodStart->format('D j M') }} to {{ $plan->periodEndFrom($newPeriodStart)->copy()->subDay()->format('D j M') }}
         </div>
     </div>
 
-    <div class="card" style="background:{{ $inGrace ? 'var(--mw-coral-tint, #FCE1D3)' : 'var(--mw-teal-tint, #DCEDE8)' }};padding:14px;margin-bottom:22px;text-align:left;border:none;">
-        <p style="font-size:12.5px;color:var(--ink-700);margin:0;">
+    <div class="mw-note {{ $inGrace ? 'warn' : 'info' }} top" style="margin-bottom:22px;">
+        <p class="mw-note-text" style="margin:0;">
             @if ($inGrace)
                 Your plan was due for renewal on {{ $subscription->current_period_end->format('D j M') }}. Renewing starts a
                 fresh period <strong>today</strong> with {{ $plan->sessions_included }} credit{{ $plan->sessions_included === 1 ? '' : 's' }}.
@@ -39,25 +39,26 @@
 
     @include('partials.voucher-box', ['quote' => $quote])
 
+    @include('partials.payment-failed')
     <form method="POST" action="{{ route('subscription.renew.pay') }}" style="text-align:left;">
         @csrf
         @if ($quote['applied'])
             <input type="hidden" name="voucher" value="{{ $quote['code'] }}">
         @endif
         @if ($quote['applied'] && $quote['total'] <= 0)
-            <button type="submit" class="btn coral block" style="border-radius:999px;">Confirm — covered by your voucher</button>
+            <button type="submit" class="btn coral block" style="border-radius:999px;">Confirm (covered by your voucher)</button>
         @else
         <div style="margin-bottom:14px;">
             <label class="mw-label" for="network">Mobile Money network</label>
             <select class="mw-field" id="network" name="network" required>
-                <option value="MTN" {{ old('network') === 'MTN' ? 'selected' : '' }}>MTN Mobile Money</option>
-                <option value="AIRTEL" {{ old('network') === 'AIRTEL' ? 'selected' : '' }}>Airtel Money</option>
+                <option value="MTN" {{ old('network', session('mw_last_momo.network')) === 'MTN' ? 'selected' : '' }}>MTN Mobile Money</option>
+                <option value="AIRTEL" {{ old('network', session('mw_last_momo.network')) === 'AIRTEL' ? 'selected' : '' }}>Airtel Money</option>
             </select>
             @error('network')<div class="mw-alert danger" style="margin-top:6px;">{{ $message }}</div>@enderror
         </div>
         <div style="margin-bottom:18px;">
             <label class="mw-label" for="phone_number">Mobile Money phone number</label>
-            <input class="mw-field" type="tel" id="phone_number" name="phone_number" value="{{ old('phone_number') }}" placeholder="0772123456" required>
+            <input class="mw-field" type="tel" id="phone_number" name="phone_number" value="{{ old('phone_number', session('mw_last_momo.phone_number')) }}" placeholder="0772123456" required>
             @error('phone_number')<div class="mw-alert danger" style="margin-top:6px;">{{ $message }}</div>@enderror
         </div>
         <button type="submit" class="btn coral block" style="border-radius:999px;">Renew with Mobile Money</button>
@@ -66,7 +67,7 @@
     <a href="{{ route('subscription.index') }}" style="display:inline-block;margin-top:10px;font-size:12px;color:var(--ink-500);">Cancel</a>
 
     <p style="font-size:10.5px;color:var(--ink-300);margin-top:16px;">
-        You'll get a prompt on your phone to approve this payment. Mobile Money only for now — card payments are coming in a later update.
+        You'll get a prompt on your phone to approve this payment. Only Mobile Money is accepted for now. Card payments will come later.
     </p>
 </div>
 @endsection

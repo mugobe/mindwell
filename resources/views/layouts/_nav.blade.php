@@ -54,7 +54,8 @@
             ]],
             ['People', [
                 ['admin.clients.index', 'admin.clients.*', 'Clients', 'clients', 0, false],
-                ['admin.therapists.index', 'admin.therapists.*', 'Therapists', 'badge', $n(fn () => \App\Models\TherapistProfile::where('credentials_verified', false)->count()), false],
+                ['admin.applications.index', 'admin.applications.*', 'Applications', 'form', $n(fn () => \App\Models\TherapistApplication::where('status', 'submitted')->count()), false],
+                ['admin.therapists.index', 'admin.therapists.*', 'Therapists', 'badge', $n(fn () => \App\Models\TherapistProfile::where('credentials_verified', false)->whereDoesntHave('application')->count()), false],
                 ['admin.users.index', 'admin.users.*', 'All users', 'user', 0, false],
             ]],
             ['Billing', [
@@ -66,8 +67,10 @@
             ]],
             ['Setup', [
                 ['admin.intake-settings.edit', 'admin.intake-settings.*', 'Intake questions', 'form', 0, false],
+                ['admin.appearance.edit', 'admin.appearance.*', 'Appearance', 'settings', 0, false],
                 ['admin.venues.index', 'admin.venues.*', 'Venues', 'pin', 0, false],
                 ['admin.facilities.index', 'admin.facilities.*', 'Referral facilities', 'hospital', 0, false],
+                ['admin.resources.index', 'admin.resources.*', 'Resource library', 'notes', 0, false],
                 ['admin.audit.index', 'admin.audit.*', 'Audit log', 'log', 0, false],
             ]],
         ];
@@ -83,6 +86,7 @@
             ['Clients', [
                 ['therapist.clients.index', 'therapist.clients.*', 'My clients', 'clients', 0, false],
                 ['therapist.reports.index', 'therapist.reports.*', 'Session notes', 'notes', 0, false],
+                ['resources.index', 'resources.*', 'Resource library', 'form', 0, false],
             ]],
             ['My practice', [
                 ['therapist.availability.index', 'therapist.availability.*', 'Availability', 'repeat', 0, false],
@@ -99,8 +103,7 @@
 <aside class="mw-nav" id="mw-nav" aria-label="Main">
     <div class="mw-nav-brand">
         <a href="{{ route('dashboard') }}" class="mw-nav-logo">
-            <span class="mark" aria-hidden="true"></span>
-            <span>Mindwell</span>
+            <img src="{{ asset('images/mindwell-logo-horizontal-white.png') }}" alt="Mindwell Consultancy Ltd" style="height:36px;width:auto;display:block;">
         </a>
         <span class="mw-nav-tag">{{ $mwTag }}</span>
     </div>

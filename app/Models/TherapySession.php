@@ -193,7 +193,7 @@ class TherapySession extends Model
             return null;
         }
 
-        return collect([$this->venue?->label(), $this->location_details])->filter()->join(' — ');
+        return collect([$this->venue?->label(), $this->location_details])->filter()->join(', ');
     }
 
     /** Price of one session of this kind, before vouchers (both are config values). */

@@ -8,7 +8,7 @@
 <div class="mw-page-head">
     <div>
         <h1>Intake questions</h1>
-        <div class="sub">The "About you" step new clients see before the PHQ-9 and GAD-7. Switch off anything that makes it too long — every section that's on can be skipped by the client.</div>
+        <div class="sub">The "About you" step new clients see before the PHQ-9 and GAD-7. Switch off anything that makes it too long. The client can skip any section that is on.</div>
     </div>
     <div class="actions"><a href="{{ route('admin.intake.index') }}" class="btn ghost sm">Intake reviews</a></div>
 </div>

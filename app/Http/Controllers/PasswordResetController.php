@@ -22,7 +22,7 @@ use Illuminate\View\View;
  */
 class PasswordResetController extends Controller
 {
-    private const SENT = "If there's a Mindwell account for that email, we've sent it a link to reset the password. The link works for 60 minutes — check your spam folder too.";
+    private const SENT = "If there's a Mindwell account for that email, we've sent it a link to reset the password. The link works for 60 minutes. Please check your spam folder too.";
 
     public function request(): View
     {

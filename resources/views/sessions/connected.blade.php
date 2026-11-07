@@ -46,7 +46,7 @@
                     @endif
                 </div>
             @else
-                <div style="font-size:13px;color:var(--ink-700);margin-top:6px;">Our team will confirm the place shortly — we'll email you.</div>
+                <div style="font-size:13px;color:var(--ink-700);margin-top:6px;">Our team will confirm the place soon and email you.</div>
             @endif
         </div>
         <p style="font-size:11.5px;color:var(--ink-300);margin-top:12px;">
@@ -58,9 +58,9 @@
         </div>
 
         <p style="font-size:11.5px;color:var(--ink-300);margin-top:12px;">
-            You can join from {{ config('mindwell.video_join_early_minutes') }} minutes before your start time —
-            or earlier, if your therapist opens the room early. Keep the room page open and you'll hear a chime
-            the moment they're ready. Use a laptop or phone with a camera, somewhere private and quiet.
+            You can join from {{ config('mindwell.video_join_early_minutes') }} minutes before your start time,
+            or earlier if your therapist opens the room early. Keep the room page open and you will hear a chime
+            when they are ready. Use a laptop or phone with a camera, somewhere private and quiet.
         </p>
     @endif
 

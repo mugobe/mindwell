@@ -35,7 +35,7 @@
         <div id="mw-assessment-body" style="display:none;margin-top:16px;">
             @if (! $intake)
                 <p style="font-size:12.5px;color:var(--ink-500);">
-                    No intake assessment on file for this client — this session was booked directly rather than
+                    No intake assessment on file for this client. This session was booked directly rather than
                     through the intake flow.
                 </p>
             @else
@@ -95,7 +95,7 @@
         @if ($sharedNotes->isNotEmpty())
             <div style="background:var(--mw-teal-tint, #DCEDE8);border-radius:12px;padding:14px 16px;margin-bottom:20px;">
                 <div style="font-size:13.5px;font-weight:800;color:var(--ink-900);">Notes {{ $session->clientProfile?->user?->name ?? 'your client' }} shared with you</div>
-                <div style="font-size:11px;color:var(--ink-500);margin:2px 0 10px;">From their private journal — they chose to share these.</div>
+                <div style="font-size:11px;color:var(--ink-500);margin:2px 0 10px;">From their private journal. They chose to share these.</div>
                 <div style="display:flex;flex-direction:column;gap:10px;max-height:260px;overflow:auto;">
                     @foreach ($sharedNotes as $note)
                         <div style="border-left:3px solid var(--mw-teal-dot, #6FA99B);padding:2px 0 2px 10px;">
@@ -159,7 +159,7 @@
 
                 @if (! $anySlotsAtAll)
                     <p style="font-size:12.5px;color:var(--ink-500);margin:4px 0 0;">
-                        You don't have any open slots in the next 7 days — add availability first, or come back to
+                        You don't have any open slots in the next 7 days. Add availability first, or come back to
                         close this out once you do.
                     </p>
                 @else
@@ -183,7 +183,7 @@
                     </p>
                     <p id="mw-followup-error" style="font-size:12px;color:#c0392b;margin:8px 0 0;display:none;"></p>
                     <p style="font-size:11.5px;color:var(--ink-300);margin:6px 0 0;">
-                        Click a day above to pick a time — this books the follow-up right away. It still needs
+                        Click a day above to pick a time. This books the follow-up right away. It still needs
                         admin/routing to approve it before the client sees it as confirmed.
                     </p>
                 @endif
@@ -208,13 +208,13 @@
                 </div>
                 <div>
                     <label class="mw-label" for="risk_assessment">Risk assessment</label>
-                    <textarea class="mw-field" id="risk_assessment" name="risk_assessment" rows="4" placeholder="Current risk level and reasoning — state explicitly if there is none." required>{{ old('risk_assessment') }}</textarea>
+                    <textarea class="mw-field" id="risk_assessment" name="risk_assessment" rows="4" placeholder="Current risk level and reasoning. Say clearly if there is none." required>{{ old('risk_assessment') }}</textarea>
                 </div>
                 <div class="mw-span-2">
                     <label class="mw-label" for="session_summary">Session summary</label>
-                    <textarea class="mw-field" id="session_summary" name="session_summary" rows="{{ $session->therapist_live_notes ? 7 : 4 }}" placeholder="What happened in the session — topics covered, interventions used." required>{{ old('session_summary', $session->therapist_live_notes) }}</textarea>
+                    <textarea class="mw-field" id="session_summary" name="session_summary" rows="{{ $session->therapist_live_notes ? 7 : 4 }}" placeholder="What happened in the session: topics covered and interventions used." required>{{ old('session_summary', $session->therapist_live_notes) }}</textarea>
                     @if ($session->therapist_live_notes && ! old('session_summary'))
-                        <div style="font-size:11px;color:var(--ink-300);margin-top:4px;">Pre-filled from the notes you took during the video call — edit freely.</div>
+                        <div style="font-size:11px;color:var(--ink-300);margin-top:4px;">Pre-filled from the notes you took during the video call. You can edit them.</div>
                     @endif
                 </div>
                 <div>
@@ -248,7 +248,7 @@
 
 <p style="font-size:11px;color:var(--ink-300);margin-top:14px;">
     Admin can see this report under Session Reports once it's saved. Choosing "Refer out" sends the case to
-    the routing team's referral queue to assign a facility — you don't pick one yourself. None of this is
+    the routing team's referral queue to assign a facility. You do not pick one yourself. None of this is
     shown to the client.
 </p>
 
@@ -263,7 +263,7 @@
         <div id="mw-popup-times" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;"></div>
 
         <label class="mw-label" for="mw-popup-notes">Notes for this follow-up (optional)</label>
-        <textarea class="mw-field" id="mw-popup-notes" rows="3" placeholder="What to focus on next time — for you and admin, not shown to the client."></textarea>
+        <textarea class="mw-field" id="mw-popup-notes" rows="3" placeholder="What to focus on next time. For you and admin only, not shown to the client."></textarea>
 
         <div style="display:flex;gap:8px;margin-top:16px;">
             <button type="button" class="btn primary" id="mw-popup-confirm" disabled onclick="mwConfirmCalendarPopup()">Confirm time</button>

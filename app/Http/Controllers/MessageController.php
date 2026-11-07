@@ -32,14 +32,23 @@ class MessageController extends Controller
     {
         [$role, $profileId] = $this->me($request->user());
 
+        return view('messages.index', ['rows' => $this->inboxRows($role, $profileId), 'role' => $role]);
+    }
+
+    /**
+     * Everyone this person may message: their conversations, plus anyone they've had or
+     * booked a session with but haven't written to yet. Newest conversation first.
+     * Shared by index() and show() (show() lists them beside the chat on wide screens,
+     * 2026-11-01 refresh).
+     */
+    private function inboxRows(string $role, $profileId)
+    {
         $conversations = ChatConversation::query()
             ->where($role === 'client' ? 'client_profile_id' : 'therapist_profile_id', $profileId)
             ->with(['clientProfile.user', 'therapistProfile.user', 'messages' => fn ($q) => $q->latest()->limit(1)])
             ->get()
             ->keyBy($role === 'client' ? 'therapist_profile_id' : 'client_profile_id');
 
-        // Everyone this person may message: their conversations, plus anyone they've
-        // had or booked a session with but haven't written to yet.
         $counterpartIds = TherapySession::query()
             ->where($role === 'client' ? 'client_profile_id' : 'therapist_profile_id', $profileId)
             ->whereIn('status', ChatConversation::RELATIONSHIP_STATUSES)
@@ -51,7 +60,7 @@ class MessageController extends Controller
             ->whereIn('id', $counterpartIds->merge($conversations->keys())->unique())
             ->get();
 
-        $rows = $profiles->map(function ($profile) use ($conversations, $role) {
+        return $profiles->map(function ($profile) use ($conversations, $role) {
             $conversation = $conversations->get($profile->id);
             $last = $conversation?->messages->first();
 
@@ -59,13 +68,11 @@ class MessageController extends Controller
                 'profile_id' => $profile->id,
                 'name' => $profile->user?->name ?? ($role === 'client' ? 'Therapist' : 'Client'),
                 'conversation' => $conversation,
-                'preview' => $last ? (($last->sender_role === $role ? 'You: ' : '').$last->body) : null,
+                'preview' => $last ? (($last->sender_role === $role ? 'You: ' : '').$last->previewText()) : null,
                 'last_at' => $conversation?->last_message_at,
                 'unread' => $conversation ? $conversation->unreadCountFor($role) : 0,
             ];
         })->sortByDesc(fn ($r) => $r['last_at']?->timestamp ?? 0)->values();
-
-        return view('messages.index', ['rows' => $rows, 'role' => $role]);
     }
 
     /** Opens (creating on first use) the conversation with one counterpart. */
@@ -100,9 +107,12 @@ class MessageController extends Controller
             ? ($conversation->therapistProfile?->user?->name ?? 'Your therapist')
             : ($conversation->clientProfile?->user?->name ?? 'Your client');
 
+        [, $myProfileId] = $this->me($request->user());
+
         return view('messages.show', [
             'conversation' => $conversation,
             'role' => $role,
+            'rows' => $this->inboxRows($role, $myProfileId),
             'otherName' => $otherName,
             'messages' => $messages->map(fn (ChatMessage $m) => $m->toChatArray($role)),
             'canSend' => $this->canStillTalk($conversation),
@@ -121,22 +131,40 @@ class MessageController extends Controller
         $role = $this->roleIn($request->user(), $conversation);
         abort_unless($this->canStillTalk($conversation), 403);
 
+        // 2026-11-07: a message can carry one photo or PDF (10 MB), with or without words.
         $validated = $request->validate([
-            'body' => ['required', 'string', 'max:5000'],
+            'body' => ['nullable', 'string', 'max:5000'],
+            'file' => array_merge(['nullable'], ChatMessage::ATTACHMENT_RULE),
+        ], [
+            'file.max' => 'That file is bigger than 10 MB. Please send a smaller one.',
+            'file.mimes' => 'You can send photos (JPG, PNG, HEIC) and PDF files.',
         ]);
 
-        $body = trim($validated['body']);
-        if ($body === '') {
+        $body = trim((string) ($validated['body'] ?? ''));
+        $file = $request->file('file');
+        if ($body === '' && ! $file) {
             return $request->expectsJson()
                 ? response()->json(['message' => 'Message is empty.'], 422)
                 : back();
+        }
+
+        $attachment = [];
+        if ($file) {
+            $ext = strtolower($file->guessExtension() ?: $file->getClientOriginalExtension() ?: 'bin');
+            $name = mb_substr(preg_replace('/[^\pL\pN ._()-]+/u', '_', basename($file->getClientOriginalName())) ?: 'file.'.$ext, 0, 150);
+            $attachment = [
+                'attachment_path' => $file->storeAs('chat-attachments/'.$conversation->id, (string) \Illuminate\Support\Str::uuid().'.'.$ext, 'local'),
+                'attachment_name' => $name,
+                'attachment_mime' => $file->getMimeType(),
+                'attachment_size' => $file->getSize(),
+            ];
         }
 
         $message = $conversation->messages()->create([
             'sender_user_id' => $request->user()->id,
             'sender_role' => $role,
             'body' => $body,
-        ]);
+        ] + $attachment);
 
         $conversation->forceFill([
             'last_message_at' => $message->created_at,
@@ -175,6 +203,30 @@ class MessageController extends Controller
             'messages' => $messages->map(fn (ChatMessage $m) => $m->toChatArray($role))->values(),
             'otherLastReadAt' => $otherRead?->toIso8601String(),
         ]);
+    }
+
+    /**
+     * Opens a message's photo or PDF (2026-11-07). Only the two people in the conversation,
+     * or an admin. Shown in the browser, never run: images and PDFs only, nosniff.
+     */
+    public function attachment(Request $request, ChatConversation $conversation, ChatMessage $message): \Symfony\Component\HttpFoundation\Response
+    {
+        abort_unless($message->chat_conversation_id === $conversation->id && $message->attachment_path, 404);
+        if ($request->user()->role !== 'admin') {
+            $this->roleIn($request->user(), $conversation);
+        }
+        abort_unless(\Illuminate\Support\Facades\Storage::disk('local')->exists($message->attachment_path), 404);
+
+        return \Illuminate\Support\Facades\Storage::disk('local')->response(
+            $message->attachment_path,
+            $message->attachment_name,
+            [
+                'Content-Type' => $message->attachment_mime ?: 'application/octet-stream',
+                'X-Content-Type-Options' => 'nosniff',
+                'Cache-Control' => 'private, max-age=600',
+            ],
+            $message->attachment_mime === 'application/pdf' || $message->attachmentKind() === 'image' ? 'inline' : 'attachment',
+        );
     }
 
     /** For the nav badge (polled every 30s by the layout). */

@@ -5,8 +5,8 @@
 @php
     $S = \App\Support\Screeners::class;
     $labels = [
-        'overdue' => ['danger', 'Overdue', 'Due more than '.config('mindwell.check_in_reminder_delay_days', 2).' days ago — they have been sent a reminder'],
-        'due' => ['warn', 'Due', 'Due now — shown on their dashboard'],
+        'overdue' => ['danger', 'Overdue', 'Due more than '.config('mindwell.check_in_reminder_delay_days', 2).' days ago. A reminder has been sent.'],
+        'due' => ['warn', 'Due', 'Due now. Shown on their dashboard.'],
         'up_to_date' => ['success', 'Up to date', 'Checked in within the last 2 weeks'],
         'no_intake' => ['', 'No intake', 'In care but never did the first assessment'],
     ];

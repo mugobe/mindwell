@@ -69,7 +69,7 @@ class ProgressController extends Controller
             return redirect()->route('progress.crisis');
         }
 
-        return redirect()->route('progress.index')->with('status', 'Thank you — your check-in is saved.');
+        return redirect()->route('progress.index')->with('status', 'Thank you. Your check-in is saved.');
     }
 
     /**
@@ -150,7 +150,7 @@ class ProgressController extends Controller
 
         if (! $status['eligible']) {
             return redirect()->route('intake.show')
-                ->with('status', 'Start with your first assessment — check-ins come after that.');
+                ->with('status', 'Please start with your first assessment. Check-ins come after that.');
         }
 
         if (! $status['available']) {
